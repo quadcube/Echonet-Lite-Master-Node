@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		7B7142DA1D2A455B0023C4A0 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B7142D91D2A455B0023C4A0 /* main.c */; };
+		7B7142E41D2A489B0023C4A0 /* error.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B7142E21D2A489B0023C4A0 /* error.c */; };
+		7B7142E71D2A48B30023C4A0 /* network.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B7142E51D2A48B30023C4A0 /* network.c */; };
+		7B7142F01D2A643D0023C4A0 /* echonet_lite.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B7142EE1D2A643D0023C4A0 /* echonet_lite.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -25,6 +28,12 @@
 /* Begin PBXFileReference section */
 		7B7142D61D2A455B0023C4A0 /* Echonet Lite Master Node */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "Echonet Lite Master Node"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B7142D91D2A455B0023C4A0 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
+		7B7142E21D2A489B0023C4A0 /* error.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = error.c; path = "../../Echonet Lite Test/Echonet Lite Test/error.c"; sourceTree = "<group>"; };
+		7B7142E31D2A489B0023C4A0 /* error.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = error.h; path = "../../Echonet Lite Test/Echonet Lite Test/error.h"; sourceTree = "<group>"; };
+		7B7142E51D2A48B30023C4A0 /* network.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = network.c; path = "../../Echonet Lite Test/Echonet Lite Test/network.c"; sourceTree = "<group>"; };
+		7B7142E81D2A5E8F0023C4A0 /* network.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = network.h; path = "../../Echonet Lite Test/Echonet Lite Test/network.h"; sourceTree = "<group>"; };
+		7B7142EE1D2A643D0023C4A0 /* echonet_lite.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = echonet_lite.c; path = "../../Echonet Lite Test/Echonet Lite Test/echonet_lite.c"; sourceTree = "<group>"; };
+		7B7142EF1D2A643D0023C4A0 /* echonet_lite.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = echonet_lite.h; path = "../../Echonet Lite Test/Echonet Lite Test/echonet_lite.h"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -58,8 +67,38 @@
 			isa = PBXGroup;
 			children = (
 				7B7142D91D2A455B0023C4A0 /* main.c */,
+				7B7142E91D2A63AC0023C4A0 /* Echonet Lite */,
+				7B7142E01D2A48130023C4A0 /* Error */,
+				7B7142E11D2A48580023C4A0 /* Network */,
 			);
 			path = "Echonet Lite Master Node";
+			sourceTree = "<group>";
+		};
+		7B7142E01D2A48130023C4A0 /* Error */ = {
+			isa = PBXGroup;
+			children = (
+				7B7142E21D2A489B0023C4A0 /* error.c */,
+				7B7142E31D2A489B0023C4A0 /* error.h */,
+			);
+			name = Error;
+			sourceTree = "<group>";
+		};
+		7B7142E11D2A48580023C4A0 /* Network */ = {
+			isa = PBXGroup;
+			children = (
+				7B7142E81D2A5E8F0023C4A0 /* network.h */,
+				7B7142E51D2A48B30023C4A0 /* network.c */,
+			);
+			name = Network;
+			sourceTree = "<group>";
+		};
+		7B7142E91D2A63AC0023C4A0 /* Echonet Lite */ = {
+			isa = PBXGroup;
+			children = (
+				7B7142EE1D2A643D0023C4A0 /* echonet_lite.c */,
+				7B7142EF1D2A643D0023C4A0 /* echonet_lite.h */,
+			);
+			name = "Echonet Lite";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -118,6 +157,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7B7142E71D2A48B30023C4A0 /* network.c in Sources */,
+				7B7142E41D2A489B0023C4A0 /* error.c in Sources */,
+				7B7142F01D2A643D0023C4A0 /* echonet_lite.c in Sources */,
 				7B7142DA1D2A455B0023C4A0 /* main.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
