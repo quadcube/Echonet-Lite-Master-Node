@@ -11,6 +11,7 @@
 		7B7142E41D2A489B0023C4A0 /* error.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B7142E21D2A489B0023C4A0 /* error.c */; };
 		7B7142E71D2A48B30023C4A0 /* network.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B7142E51D2A48B30023C4A0 /* network.c */; };
 		7B7142F01D2A643D0023C4A0 /* echonet_lite.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B7142EE1D2A643D0023C4A0 /* echonet_lite.c */; };
+		7BBC043E1D338EBA009771E0 /* EETCC.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BBC043C1D338EBA009771E0 /* EETCC.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -34,6 +35,8 @@
 		7B7142E81D2A5E8F0023C4A0 /* network.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = network.h; path = "../../Echonet Lite Test/Echonet Lite Test/network.h"; sourceTree = "<group>"; };
 		7B7142EE1D2A643D0023C4A0 /* echonet_lite.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = echonet_lite.c; path = "../../Echonet Lite Test/Echonet Lite Test/echonet_lite.c"; sourceTree = "<group>"; };
 		7B7142EF1D2A643D0023C4A0 /* echonet_lite.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = echonet_lite.h; path = "../../Echonet Lite Test/Echonet Lite Test/echonet_lite.h"; sourceTree = "<group>"; };
+		7BBC043C1D338EBA009771E0 /* EETCC.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = EETCC.c; sourceTree = "<group>"; };
+		7BBC043D1D338EBA009771E0 /* EETCC.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EETCC.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,6 +70,7 @@
 			isa = PBXGroup;
 			children = (
 				7B7142D91D2A455B0023C4A0 /* main.c */,
+				7BBC043B1D338E85009771E0 /* Energy Efficient Thermal Comfort Control */,
 				7B7142E91D2A63AC0023C4A0 /* Echonet Lite */,
 				7B7142E01D2A48130023C4A0 /* Error */,
 				7B7142E11D2A48580023C4A0 /* Network */,
@@ -99,6 +103,15 @@
 				7B7142EF1D2A643D0023C4A0 /* echonet_lite.h */,
 			);
 			name = "Echonet Lite";
+			sourceTree = "<group>";
+		};
+		7BBC043B1D338E85009771E0 /* Energy Efficient Thermal Comfort Control */ = {
+			isa = PBXGroup;
+			children = (
+				7BBC043C1D338EBA009771E0 /* EETCC.c */,
+				7BBC043D1D338EBA009771E0 /* EETCC.h */,
+			);
+			name = "Energy Efficient Thermal Comfort Control";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -159,6 +172,7 @@
 			files = (
 				7B7142E71D2A48B30023C4A0 /* network.c in Sources */,
 				7B7142E41D2A489B0023C4A0 /* error.c in Sources */,
+				7BBC043E1D338EBA009771E0 /* EETCC.c in Sources */,
 				7B7142F01D2A643D0023C4A0 /* echonet_lite.c in Sources */,
 				7B7142DA1D2A455B0023C4A0 /* main.c in Sources */,
 			);
@@ -281,6 +295,7 @@
 				7B7142DF1D2A455B0023C4A0 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

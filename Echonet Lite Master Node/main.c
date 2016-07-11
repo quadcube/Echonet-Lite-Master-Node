@@ -92,37 +92,24 @@ int main(int argc, const char * argv[])
     echonet_setEHD1();
     echonet_setEHD2(1);
     echonet_setTID(0x0000);
-    echonet_setSEOJ(CGC_PROFILE_CLASS,CC_NODE_PROFILE,IC_GENERAL_NODE);
-    echonet_setDEOJ(CGC_PROFILE_CLASS,CC_NODE_PROFILE,IC_GENERAL_NODE);
+    echonet_setSEOJ(0x00,0x00,0x00);
+    echonet_setDEOJ(CGC_SENSOR_RELATED, CC_TEMPERTURE_SENSOR,0x01);
+    //echonet_setDEOJ(CGC_PROFILE_CLASS,CC_NODE_PROFILE,IC_GENERAL_NODE);
     echonet_setESV(ESV_Get);
     echonet_setOPC(1);
-    echonet_setnEPC(1,0xD6);
+    echonet_setnEPC(1,0x80);
     echonet_setnPDC(1,0);
-    echonet_routine();
+    //echonet_setnEPC(2,0xE0);
+    //echonet_setnPDC(2,0);
+    echonet_routine(14);
+    //echonet_getNodeInfo_SNILS("150.65.230.104");
+    //echonet_getObject_sensorTemp_reading("150.65.230.104",0x01);
     
-    
-    
-    
-    
-    while(1)
+    /*while(1)
     {
-        //printf("Type a sentence to send to server:\n");
-        //fgets(buffer,DEFAULT_BUFFER_SIZE,stdin);
-        //packet_length=3;
-        //send_udp(buffer,&packet_length);
-        //memset(buffer, 0, sizeof(buffer));
-        //recv_udp(buffer,&packet_length);
-        
-        //printf("Received from server: %s\n",buffer);
-        //printf("Packet size: %lu\n",packet_length);
-        //printf("Received: %s",buffer);
-        /*for(i=0;i<(packet_length);i++)
-        {
-            printf("%c",buffer[i]);
-        }*/
-        //printf("!");
+     
         sleep(10);
-    }
+    }*/
     
     return 0;
 }
