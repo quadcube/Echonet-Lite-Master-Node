@@ -27,6 +27,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		7B5B56311D391DBE00C8DD9B /* EETCC_MATLAB.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EETCC_MATLAB.h; sourceTree = "<group>"; };
 		7B7142D61D2A455B0023C4A0 /* Echonet Lite Master Node */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "Echonet Lite Master Node"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B7142D91D2A455B0023C4A0 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 		7B7142E21D2A489B0023C4A0 /* error.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = error.c; path = "../../Echonet Lite Test/Echonet Lite Test/error.c"; sourceTree = "<group>"; };
@@ -110,6 +111,7 @@
 			children = (
 				7BBC043C1D338EBA009771E0 /* EETCC.c */,
 				7BBC043D1D338EBA009771E0 /* EETCC.h */,
+				7B5B56311D391DBE00C8DD9B /* EETCC_MATLAB.h */,
 			);
 			name = "Energy Efficient Thermal Comfort Control";
 			sourceTree = "<group>";
@@ -218,9 +220,16 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = "\"$(SRCROOT)/../../MySQL Library/mysql-connector-c-6.1.6-osx10.8-x86_64/include/**\"";
+				LIBRARY_SEARCH_PATHS = "\"$(SRCROOT)/../../MySQL Library/mysql-connector-c-6.1.6-osx10.8-x86_64/lib/**\"";
 				MACOSX_DEPLOYMENT_TARGET = 10.11;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = (
+					"-lmysqlclient",
+					"-lm",
+					"-lz",
+				);
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -256,8 +265,15 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = "\"$(SRCROOT)/../../MySQL Library/mysql-connector-c-6.1.6-osx10.8-x86_64/include/**\"";
+				LIBRARY_SEARCH_PATHS = "\"$(SRCROOT)/../../MySQL Library/mysql-connector-c-6.1.6-osx10.8-x86_64/lib/**\"";
 				MACOSX_DEPLOYMENT_TARGET = 10.11;
 				MTL_ENABLE_DEBUG_INFO = NO;
+				OTHER_LDFLAGS = (
+					"-lmysqlclient",
+					"-lm",
+					"-lz",
+				);
 				SDKROOT = macosx;
 			};
 			name = Release;
