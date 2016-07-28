@@ -28,8 +28,9 @@
 //#include "EETCC_MATLAB.h"
 
 
-#define TIME_INTERVAL_MS    10000  //10 seconds per EETCC calculation
-#define DESIRED_TEMPERATURE 25.07
+#define TIME_INTERVAL_MS            10000  //10 seconds per EETCC calculation
+#define TIME_INTERVAL_RETRANSMIT    10  //in seconds
+#define DESIRED_TEMPERATURE         25.07
 
 void ECHONETMT_LITE_MAIN_ROUTINE(void);
 void ECHONET_LITE_MAIN_ROUTINE(void);
@@ -50,6 +51,7 @@ time_t currentTime1,previousTime1,currentTime2,previousTime2,currentTime3,previo
 float MTUDP_network_timeout_aircond=0,MTUDP_network_timeout_airspeed_indoor=0,MTUDP_network_timeout_airspeed_outdoor=0,MTUDP_network_timeout_temperature_indoor=0,MTUDP_network_timeout_temperature_outdoor=0,MTUDP_network_timeout_window1=0,MTUDP_network_timeout_window2=0,MTUDP_network_timeout_curtain=0;
 float MTsensor_AirSpeedIndoor=0,MTsensor_AirSpeedOutdoor=0,MTsensor_AirSpeed1=0,MTsensor_AirSpeed2=0,MTsensor_AirSpeed3=0,MTsensor_TemperatureIndoor=0,MTsensor_HumidityIndoor=0,MTsensor_HumidityOutdoor=0,MTsensor_TemperatureOutdoor=0;
 uint8_t MTstate_window1=0,MTstate_window2=0,MTstate_curtain=0,MTstate_aircond=0,MTsetting_aircond_temperature=0,MTaircond_room_humidity=0;
+uint8_t MTupdatedstate_window1=0,MTupdatedstate_window2=0,MTupdatedstate_curtain=0,MTupdatedstate_aircond=0;
 uint8_t EETCC_ControlSignal=5;
 char UDPnetwork_buffer[DEFAULT_BUFFER_SIZE];
 uint16_t UDPpacket_TID;
@@ -293,7 +295,7 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     PPD=EETCC_PPD();
     draught=EETCC_draught(sensor_TemperatureIndoor, sensor_AirSpeedIndoor);
     
-    sprintf(sql,"INSERT INTO iHouseData_test VALUES(%d,%d,%d,%d,%d,%d,%f,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%f,%d,%f,%f,%f,%f,%f,NOW())",(sql_ID+run_counter-1),state_window1,state_window2,state_curtain,state_aircond,setting_aircond_temperature,aircond_current_comsumption,aircond_room_humidity,aircond_room_temperature,aircond_cooled_air_temperature,aircond_outdoor_air_temperature,sensor_TemperatureIndoor,sensor_TemperatureOutdoor,sensor_AirSpeedIndoor,sensor_AirSpeedOutdoor,sensor_HumidityIndoor,sensor_HumidityOutdoor,sensor_SolarVoltage,sensor_SolarRadiation,UDP_network_timeout_aircond,UDP_network_timeout_airspeed_indoor,UDP_network_timeout_airspeed_outdoor,UDP_network_timeout_temperature_indoor,UDP_network_timeout_temperature_outdoor,UDP_network_timeout_window1,UDP_network_timeout_window2,UDP_network_timeout_curtain,UDP_network_fatal_aircond,UDP_network_fatal_airspeed_indoor,UDP_network_fatal_airspeed_outdoor,UDP_network_fatal_temperature_indoor,UDP_network_fatal_temperature_outdoor,UDP_network_fatal_window1,UDP_network_fatal_window2,UDP_network_fatal_curtain,PMV,PMV1,PMV2,PMV3,PMV4,PPD,PPD1,PPD2,PPD3,PPD4,ControlSignal,prev_ControlSignal,timer,index,globalA,globalA_delay,Q1,Q2,draught);
+    sprintf(sql,"INSERT INTO iHouseData_test2 VALUES(%d,%d,%d,%d,%d,%d,%f,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%f,%d,%f,%f,%f,%f,%f,NOW())",(sql_ID+run_counter-1),state_window1,state_window2,state_curtain,state_aircond,setting_aircond_temperature,aircond_current_comsumption,aircond_room_humidity,aircond_room_temperature,aircond_cooled_air_temperature,aircond_outdoor_air_temperature,sensor_TemperatureIndoor,sensor_TemperatureOutdoor,sensor_AirSpeedIndoor,sensor_AirSpeedOutdoor,sensor_HumidityIndoor,sensor_HumidityOutdoor,sensor_SolarVoltage,sensor_SolarRadiation,UDP_network_timeout_aircond,UDP_network_timeout_airspeed_indoor,UDP_network_timeout_airspeed_outdoor,UDP_network_timeout_temperature_indoor,UDP_network_timeout_temperature_outdoor,UDP_network_timeout_window1,UDP_network_timeout_window2,UDP_network_timeout_curtain,UDP_network_fatal_aircond,UDP_network_fatal_airspeed_indoor,UDP_network_fatal_airspeed_outdoor,UDP_network_fatal_temperature_indoor,UDP_network_fatal_temperature_outdoor,UDP_network_fatal_window1,UDP_network_fatal_window2,UDP_network_fatal_curtain,PMV,PMV1,PMV2,PMV3,PMV4,PPD,PPD1,PPD2,PPD3,PPD4,ControlSignal,prev_ControlSignal,timer,index,globalA,globalA_delay,Q1,Q2,draught);
     if(mysql_query(con, sql))
     {
         exit_sql_error(con);
@@ -304,7 +306,7 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     printf("End of EETCC routine. No.%d\n\n",run_counter);
     
     run_counter++;
-    if(TID_counter_local<255)
+    if(TID_counter_local<245)   //reserve 10 TID_counter for ECHONET_DEVICE_CONTROL
         TID_counter_local++;
     else
         TID_counter_local=0;
@@ -317,11 +319,20 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
 
 void *ECHONET_DEVICE_CONTROL(void *threadid)
 {
-    uint8_t prev_EETCC_controlsignal=0,EETCC_controlsignal,unexpected_state_changed;
+    uint8_t prev_EETCC_controlsignal=0,EETCC_controlsignal,unexpected_state_changed=0;
     uint8_t state_Aircond,state_Window1,state_Window2,state_Curtain;
+    uint8_t updatedstate_Aircond=1,updatedstate_Window1=1,updatedstate_Window2=1,updatedstate_Curtain=1;
     time_t currentTime_all,previousTime_aircond,previousTime_window1,previousTime_window2,previousTime_curtain;
+    time_t specialTimer;
+    uint16_t echonet_TID=246;
+    uint8_t first_run=1,retransmit_flag=0;
     long tid;
     tid = (long)threadid;
+    time(&specialTimer);
+    time(&previousTime_aircond);
+    time(&previousTime_window1);
+    time(&previousTime_window2);
+    time(&previousTime_curtain);
     while(1)
     {
         //Multi-thread global variable lock to prevent read/write error
@@ -331,20 +342,340 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
         state_Window1=MTstate_window1;
         state_Window2=MTstate_window2;
         state_Curtain=MTstate_curtain;
-        pthread_mutex_unlock(&mutex);
-        time(&currentTime_all);
-        if(EETCC_controlsignal!=prev_EETCC_controlsignal || unexpected_state_changed==1)
+        if(MTupdatedstate_aircond>0)
         {
-            
-            
-            prev_EETCC_controlsignal=EETCC_controlsignal;
+            MTstate_aircond=state_Aircond=MTupdatedstate_aircond;
+            MTupdatedstate_aircond=updatedstate_Aircond=0;
+        }
+        if(MTupdatedstate_window1>0)
+        {
+            //MTstate_window1=state_Window1=MTupdatedstate_window1;
+            MTupdatedstate_window1=updatedstate_Window1=0;
+        }
+        if(MTupdatedstate_window2>0)
+        {
+            //MTstate_window2=state_Window2=MTupdatedstate_window2;
+            MTupdatedstate_window2=updatedstate_Window2=0;
+        }
+        if(MTupdatedstate_curtain>0)
+        {
+            //MTstate_curtain=state_Curtain=MTupdatedstate_curtain;
+            MTupdatedstate_curtain=updatedstate_Curtain=0;
+        }
+        pthread_mutex_unlock(&mutex);
+        
+        time(&currentTime_all);
+        if(EETCC_controlsignal!=prev_EETCC_controlsignal || unexpected_state_changed>1 || retransmit_flag==1)
+        {
+            if(unexpected_state_changed>1)
+                printf("\n##########################################\n\nUnexpected changes occured in Echonet device state!\n\n##########################################\n");
+            else if(retransmit_flag==1)
+            {
+                printf("\n##########################################\n\nRetransmit packet occured!\n\n##########################################\n");
+            }
+            else
+            {
+                printf("\n##########################################\n\nControl Signal changed! State: %d\n\n##########################################\n",(EETCC_controlsignal-1));
+            }
+            if((difftime(currentTime_all, specialTimer)>180) || first_run==1)
+            {
+                time(&specialTimer);
+                prev_EETCC_controlsignal=EETCC_controlsignal;
+            }
+            unexpected_state_changed=0;
+            retransmit_flag=0;
+            switch (prev_EETCC_controlsignal)
+            {
+                case 1:
+                    if(state_Aircond==0x30 && (difftime(currentTime_all,previousTime_aircond)> TIME_INTERVAL_RETRANSMIT|| first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0x31);
+                        updatedstate_Aircond=1;
+                        time(&previousTime_aircond);
+                        printf("Disabling air conditional! State: 0\n");
+                    }
+                    else
+                        updatedstate_Aircond=0;
+                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        updatedstate_Window1=1;
+                        time(&previousTime_window1);
+                        printf("Disabling window1! State: 0\n");
+                    }
+                    else
+                        updatedstate_Window1=0;
+                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        updatedstate_Window2=1;
+                        time(&previousTime_window2);
+                        printf("Disabling window2! State: 0\n");
+                    }
+                    else
+                        updatedstate_Window2=0;
+                    if(state_Curtain==0x30 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        updatedstate_Curtain=1;
+                        time(&previousTime_curtain);
+                        printf("Disabling curtain! State: 0\n");
+                    }
+                    else
+                        updatedstate_Curtain=0;
+                    break;
+                    
+                case 2:
+                    if(state_Aircond==0x30 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0x31);
+                        updatedstate_Aircond=1;
+                        time(&previousTime_aircond);
+                        printf("Disabling air conditional! State: 1\n");
+                    }
+                    else
+                        updatedstate_Aircond=0;
+                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        updatedstate_Window1=1;
+                        time(&previousTime_window1);
+                        printf("Disabling window1! State: 1\n");
+                    }
+                    else
+                        updatedstate_Window1=0;
+                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        updatedstate_Window2=1;
+                        time(&previousTime_window2);
+                        printf("Disabling window2! State: 1\n");
+                    }
+                    else
+                        updatedstate_Window2=0;
+                    if(state_Curtain==0x31 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        updatedstate_Curtain=1;
+                        time(&previousTime_curtain);
+                        printf("Enabling curtain! State: 1\n");
+                    }
+                    else
+                        updatedstate_Curtain=0;
+                    break;
+                    
+                case 3:
+                    if(state_Aircond==0x30 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0x31);
+                        updatedstate_Aircond=1;
+                        time(&previousTime_aircond);
+                        printf("Disabling air conditional! State: 2\n");
+                    }
+                    else
+                        updatedstate_Aircond=0;
+                    if(state_Window1==0x31 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        updatedstate_Window1=1;
+                        time(&previousTime_window1);
+                        printf("Enabling window1! State: 2\n");
+                    }
+                    else
+                        updatedstate_Window1=0;
+                    if(state_Window2==0x31 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        updatedstate_Window2=1;
+                        time(&previousTime_window2);
+                        printf("Enabling window2! State: 2\n");
+                    }
+                    else
+                        updatedstate_Window2=0;
+                    if(state_Curtain==0x30 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        updatedstate_Curtain=1;
+                        time(&previousTime_curtain);
+                        printf("Disabling curtain! State: 2\n");
+                    }
+                    else
+                        updatedstate_Curtain=0;
+                    break;
+                    
+                case 4:
+                    if(state_Aircond==0x30 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0x31);
+                        updatedstate_Aircond=1;
+                        time(&previousTime_aircond);
+                        printf("Disabling air conditional! State: 3\n");
+                    }
+                    else
+                        updatedstate_Aircond=0;
+                    if(state_Window1==0x31 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        updatedstate_Window1=1;
+                        time(&previousTime_window1);
+                        printf("Enabling window1! State: 3\n");
+                    }
+                    else
+                        updatedstate_Window1=0;
+                    if(state_Window2==0x31 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        updatedstate_Window2=1;
+                        time(&previousTime_window2);
+                        printf("Enabling window2! State: 3\n");
+                    }
+                    else
+                        updatedstate_Window2=0;
+                    if(state_Curtain==0x31 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        updatedstate_Curtain=1;
+                        time(&previousTime_curtain);
+                        printf("Enabling curtain! State: 3\n");
+                    }
+                    else
+                        updatedstate_Curtain=0;
+                    break;
+                    
+                case 5:
+                    if(state_Aircond==0x31 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0x30);
+                        updatedstate_Aircond=1;
+                        time(&previousTime_aircond);
+                        printf("Enabling air conditional! State: 4\n");
+                    }
+                    else
+                        updatedstate_Aircond=0;
+                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        updatedstate_Window1=1;
+                        time(&previousTime_window1);
+                        printf("Disabling window1! State: 4\n");
+                    }
+                    else
+                        updatedstate_Window1=0;
+                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        updatedstate_Window2=1;
+                        time(&previousTime_window2);
+                        printf("Disabling window2! State: 4\n");
+                    }
+                    else
+                        updatedstate_Window2=0;
+                    if(state_Curtain==0x30 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        updatedstate_Curtain=1;
+                        time(&previousTime_curtain);
+                        printf("Disabling curtain! State: 4\n");
+                    }
+                    else
+                        updatedstate_Curtain=0;
+                    break;
+                    
+                case 6:
+                    if(state_Aircond==0x31 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0x30);
+                        updatedstate_Aircond=1;
+                        time(&previousTime_aircond);
+                        printf("Enabling air conditional! State: 5\n");
+                    }
+                    else
+                        updatedstate_Aircond=0;
+                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        updatedstate_Window1=1;
+                        time(&previousTime_window1);
+                        printf("Disabling window1! State: 5\n");
+                    }
+                    else
+                        updatedstate_Window1=0;
+                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        updatedstate_Window2=1;
+                        time(&previousTime_window2);
+                        printf("Disabling window2! State: 5\n");
+                    }
+                    else
+                        updatedstate_Window2=0;
+                    if(state_Curtain==0x31 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    {
+                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        updatedstate_Curtain=1;
+                        time(&previousTime_curtain);
+                        printf("Enabling curtain! State: 5\n");
+                    }
+                    else
+                        updatedstate_Curtain=0;
+                    break;
+                    
+                default:
+                    break;
+            }
+        }
+        else if((updatedstate_Aircond==1 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT)) || (updatedstate_Window1==1 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT)) || (updatedstate_Window2==1 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT)) || (updatedstate_Curtain==1 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT)))
+        {
+            //routine for re-transmission to ensure device state is correct
+            retransmit_flag=1;
         }
         else
         {
-            difftime(currentTime_all,previousTime_aircond);
+            //check current state of the Echonet Lite Devices (only for unexpected changes)
+            switch (prev_EETCC_controlsignal)
+            {
+                case 1:
+                    if((state_Aircond==0x30 && updatedstate_Aircond==0) || (state_Window1==0x30 && updatedstate_Window1==0) || (state_Window2==0x30 && updatedstate_Window2==0) || (state_Curtain==0x30 && updatedstate_Curtain==0))
+                        unexpected_state_changed++;
+                    break;
+                    
+                case 2:
+                    if((state_Aircond==0x30 && updatedstate_Aircond==0) || (state_Window1==0x30 &&updatedstate_Window1==0) || (state_Window2==0x30 && updatedstate_Window2==0) || (state_Curtain==0x31 && updatedstate_Curtain==0))
+                        unexpected_state_changed++;
+                    break;
+                    
+                case 3:
+                    if((state_Aircond==0x30 && updatedstate_Aircond==0) || (state_Window1==0x31 && updatedstate_Window1==0) || (state_Window2==0x31 && updatedstate_Window2==0) || (state_Curtain==0x30 && updatedstate_Curtain==0))
+                        unexpected_state_changed++;
+                    break;
+                    
+                case 4:
+                    if((state_Aircond==0x30 && updatedstate_Aircond==0) || (state_Window1==0x31 && updatedstate_Window1==0) || (state_Window2==0x31 && updatedstate_Window2==0) || (state_Curtain==0x31 && updatedstate_Curtain==0))
+                        unexpected_state_changed++;
+                    break;
+                    
+                case 5:
+                    if((state_Aircond==0x31 && updatedstate_Aircond==0) || (state_Window1==0x30 && updatedstate_Window1==0) || (state_Window2==0x30 && updatedstate_Window2==0) || (state_Curtain==0x30 && updatedstate_Curtain==0))
+                        unexpected_state_changed++;
+                    break;
+                    
+                case 6:
+                    if((state_Aircond==0x31 && updatedstate_Aircond==0) || (state_Window1==0x30 && updatedstate_Window1==0) || (state_Window2==0x30 && updatedstate_Window2==0) || (state_Curtain==0x31 && updatedstate_Curtain==0))
+                        unexpected_state_changed++;
+                    break;
+                    
+                default:
+                    break;
+            }
         }
+        if(first_run==1)
+            first_run=0;
+        echonetMT_getiHouse_2_166(echonet_TID);
+        echonetMT_getiHouse_2_167(echonet_TID);
+        echonetMT_getiHouse_2_158(echonet_TID);
+        sleep(1);
         //sleep 500ms
-        nanosleep((const struct timespec[]){{0, 500000000L}}, NULL);
+        //nanosleep((const struct timespec[]){{0, 1000000000L}}, NULL);
     }
     //pthread_exit(NULL);
 }
@@ -450,10 +781,15 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                     {
                                         case 21:
                                             MTsensor_TemperatureOutdoor=((float)(UDPnetwork_buffer[14]<<8 | UDPnetwork_buffer[15]))/10;
-                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                             {
                                                 time(&currentTime2);
                                                 MTUDP_network_timeout_temperature_outdoor=(float)difftime(currentTime2,previousTime2);
+                                            }
+                                            else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            {
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_temperature_outdoor=0;
                                             }
                                             else
                                             {
@@ -463,10 +799,15 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                             
                                         case 30:
                                             MTsensor_TemperatureIndoor=((float)(UDPnetwork_buffer[14]<<8 | UDPnetwork_buffer[15]))/10;
-                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                             {
                                                 time(&currentTime3);
                                                 MTUDP_network_timeout_temperature_indoor=(float)difftime(currentTime3,previousTime3);
+                                            }
+                                            else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            {
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_temperature_indoor=0;
                                             }
                                             else
                                             {
@@ -493,10 +834,15 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                     {
                                         case 22:
                                             MTsensor_HumidityOutdoor=((float)UDPnetwork_buffer[14])/100;
-                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                             {
                                                 time(&currentTime2);
                                                 MTUDP_network_timeout_temperature_outdoor=(float)difftime(currentTime2,previousTime2);
+                                            }
+                                            else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            {
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_temperature_outdoor=0;
                                             }
                                             else
                                             {
@@ -506,10 +852,15 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                             
                                         case 31:
                                             MTsensor_HumidityIndoor=((float)UDPnetwork_buffer[14])/100;
-                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                             {
                                                 time(&currentTime3);
                                                 MTUDP_network_timeout_temperature_indoor=(float)difftime(currentTime3,previousTime3);
+                                            }
+                                            else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            {
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_temperature_indoor=0;
                                             }
                                             else
                                             {
@@ -572,10 +923,15 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                     {
                                         case 10:
                                             MTsensor_AirSpeed1=((float)(UDPnetwork_buffer[14]<<8 | UDPnetwork_buffer[15]))/100;
-                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                             {
                                                 time(&currentTime1);
                                                 MTUDP_network_timeout_airspeed_indoor=(float)difftime(currentTime1,previousTime1);
+                                            }
+                                            else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            {
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_airspeed_indoor=0;
                                             }
                                             else
                                             {
@@ -585,10 +941,15 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                             
                                         case 11:
                                             MTsensor_AirSpeed2=((float)(UDPnetwork_buffer[14]<<8 | UDPnetwork_buffer[15]))/100;
-                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                             {
                                                 time(&currentTime1);
                                                 MTUDP_network_timeout_airspeed_indoor=(float)difftime(currentTime1,previousTime1);
+                                            }
+                                            else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            {
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_airspeed_indoor=0;
                                             }
                                             else
                                             {
@@ -598,10 +959,15 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                             
                                         case 12:
                                             MTsensor_AirSpeed3=((float)(UDPnetwork_buffer[14]<<8 | UDPnetwork_buffer[15]))/100;
-                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                             {
                                                 time(&currentTime1);
                                                 MTUDP_network_timeout_airspeed_indoor=(float)difftime(currentTime1,previousTime1);
+                                            }
+                                            else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            {
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_airspeed_indoor=0;
                                             }
                                             else
                                             {
@@ -611,10 +977,15 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                             
                                         case 20:
                                             MTsensor_AirSpeedOutdoor=((float)(UDPnetwork_buffer[14]<<8 | UDPnetwork_buffer[15]))/100;
-                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                             {
                                                 time(&currentTime2);
                                                 MTUDP_network_timeout_airspeed_outdoor=(float)difftime(currentTime2,previousTime2);
+                                            }
+                                            else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            {
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_airspeed_outdoor=0;
                                             }
                                             else
                                             {
@@ -689,10 +1060,15 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                 if((unsigned)UDPnetwork_buffer[12]==EPC_OPERATIONAL_STATUS && (unsigned)UDPnetwork_buffer[13]==1)
                                 {
                                     MTstate_aircond=UDPnetwork_buffer[14];
-                                    if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                    if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                     {
                                         time(&currentTime4);
                                         MTUDP_network_timeout_aircond=(float)difftime(currentTime4,previousTime4);
+                                    }
+                                    else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                    {
+                                        //no specific assignment for the moment 28/7/2016
+                                        //MTUDP_network_timeout_aircond=0;
                                     }
                                     else
                                     {
@@ -703,7 +1079,7 @@ void *SERVER_PORT_LISTEN(void *threadid)
                             }
                             else if((unsigned)UDPnetwork_buffer[10]==ESV_Set_Res && (unsigned)UDPnetwork_buffer[11]==0x01)
                             {
-                                
+                                MTupdatedstate_aircond=UDPnetwork_buffer[14];
                             }
                             break;
                         case CC_COLD_BLASTER:
@@ -1111,25 +1487,35 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                 {
                                     switch (UDPpacket_TID)
                                     {
-                                        case 40:
+                                        /*case 40:
                                             MTstate_aircond=UDPnetwork_buffer[14];
-                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                             {
                                                 time(&currentTime4);
                                                 MTUDP_network_timeout_aircond=(float)difftime(currentTime4,previousTime4);
+                                            }
+                                            else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            {
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_aircond=0;
                                             }
                                             else
                                             {
                                                 MTUDP_network_timeout_aircond=-abs(UDPpacket_TID_upper8bit-TID_counter);
                                             }
-                                            break;
+                                            break;*/
                                             
                                         case 50:
                                             MTstate_window1=UDPnetwork_buffer[14];
-                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                             {
                                                 time(&currentTime5);
                                                 MTUDP_network_timeout_window1=(float)difftime(currentTime5,previousTime5);
+                                            }
+                                            else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            {
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_window1=0;
                                             }
                                             else
                                             {
@@ -1139,10 +1525,15 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                             
                                         case 60:
                                             MTstate_window2=UDPnetwork_buffer[14];
-                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                             {
                                                 time(&currentTime6);
                                                 MTUDP_network_timeout_window2=(float)difftime(currentTime6,previousTime6);
+                                            }
+                                            else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            {
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_window2=0;
                                             }
                                             else
                                             {
@@ -1152,10 +1543,15 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                             
                                         case 70:
                                             MTstate_curtain=UDPnetwork_buffer[14];
-                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
                                             {
                                                 time(&currentTime7);
                                                 MTUDP_network_timeout_curtain=(float)difftime(currentTime7,previousTime7);
+                                            }
+                                            else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            {
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_curtain=0;
                                             }
                                             else
                                             {
@@ -1170,7 +1566,23 @@ void *SERVER_PORT_LISTEN(void *threadid)
                             }
                             else if((unsigned)UDPnetwork_buffer[10]==ESV_Set_Res && (unsigned)UDPnetwork_buffer[11]==0x01)
                             {
-                                
+                                switch (UDPpacket_TID)
+                                {
+                                    case 50:
+                                        MTupdatedstate_window1=UDPnetwork_buffer[14];
+                                        break;
+                                        
+                                    case 60:
+                                        MTupdatedstate_window2=UDPnetwork_buffer[14];
+                                        break;
+                                        
+                                    case 70:
+                                        MTupdatedstate_curtain=UDPnetwork_buffer[14];
+                                        break;
+                                        
+                                    default:
+                                        break;
+                                }
                             }
                             break;
                         case CC_PORTABLE_TERMINAL:
