@@ -36,16 +36,21 @@ void ECHONET_LITE_MAIN_ROUTINE(void);
 void System_INT_Handler(int sig);
 void close_sql(MYSQL *con);
 void *SERVER_PORT_LISTEN(void *threadid);
+void *ECHONET_DEVICE_CONTROL(void *threadid);
 
 //MySQL global variable
 uint16_t run_counter=1,sql_ID;
+uint8_t TID_counter=0;
 char sql[1000];
 MYSQL *con;
 
 //Multi-thread global variable
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-float MTsensor_AirSpeedIndoor,MTsensor_AirSpeedOutdoor,MTsensor_AirSpeed1,MTsensor_AirSpeed2,MTsensor_AirSpeed3,MTsensor_TemperatureIndoor,MTsensor_HumidityIndoor,MTsensor_HumidityOutdoor,MTsensor_TemperatureOutdoor;
-uint8_t MTstate_window1,MTstate_window2,MTstate_curtain,MTstate_aircond,MTsetting_aircond_temperature,MTaircond_room_humidity;
+time_t currentTime1,previousTime1,currentTime2,previousTime2,currentTime3,previousTime3,currentTime4,previousTime4,currentTime5,previousTime5,currentTime6,previousTime6,currentTime7,previousTime7;
+float MTUDP_network_timeout_aircond=0,MTUDP_network_timeout_airspeed_indoor=0,MTUDP_network_timeout_airspeed_outdoor=0,MTUDP_network_timeout_temperature_indoor=0,MTUDP_network_timeout_temperature_outdoor=0,MTUDP_network_timeout_window1=0,MTUDP_network_timeout_window2=0,MTUDP_network_timeout_curtain=0;
+float MTsensor_AirSpeedIndoor=0,MTsensor_AirSpeedOutdoor=0,MTsensor_AirSpeed1=0,MTsensor_AirSpeed2=0,MTsensor_AirSpeed3=0,MTsensor_TemperatureIndoor=0,MTsensor_HumidityIndoor=0,MTsensor_HumidityOutdoor=0,MTsensor_TemperatureOutdoor=0;
+uint8_t MTstate_window1=0,MTstate_window2=0,MTstate_curtain=0,MTstate_aircond=0,MTsetting_aircond_temperature=0,MTaircond_room_humidity=0;
+uint8_t EETCC_ControlSignal=5;
 char UDPnetwork_buffer[DEFAULT_BUFFER_SIZE];
 uint16_t UDPpacket_TID;
 unsigned long UDPpacket_length;
@@ -88,28 +93,62 @@ int main(void)
         perror("Error initializing setitimer()\n");
         exit(1);
     }
-    pthread_t threads[1];
+    pthread_t threads[2];
     if(pthread_create(&threads[0], NULL,SERVER_PORT_LISTEN,(void *)0))
     {
         printf("Error on thread creation for SERVER_PORT_LISTEN\n");
         exit(-1);
     }
-    
     //Initial UDP packet transmission
     //3 Indoor Airspeed sensor (IP:192.168.2.202) TID: 10
     echonetMT_getiHouse_2_202(10);
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime1);
+    pthread_mutex_unlock(&mutex);
     //1 Outdoor Airspeed sensor,1 Outdoor Temperature sensor,1 Outdoor Humidity sensor (IP:192.168.2.145) TID: 20
     echonetMT_getiHouse_2_145(20);
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime2);
+    pthread_mutex_unlock(&mutex);
     //1 Indoor Temperature sensor,1 Indoor Humidity sensor (IP:192.168.2.108) TID: 30
     echonetMT_getiHouse_2_108(30);
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime3);
+    pthread_mutex_unlock(&mutex);
     //Air Conditioner (IP:192.168.2.174) TID: 40
     echonetMT_getiHouse_2_174(40);
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime4);
+    pthread_mutex_unlock(&mutex);
     //2 Switch, Window1 (IP:192.168.2.166) TID: 50
     echonetMT_getiHouse_2_166(50);
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime5);
+    pthread_mutex_unlock(&mutex);
     //2 Switch, Window2 (IP:192.168.2.167) TID: 60
     echonetMT_getiHouse_2_167(60);
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime6);
+    pthread_mutex_unlock(&mutex);
     //2 Switch, Curtain (IP:192.168.2.158) TID: 70
     echonetMT_getiHouse_2_158(70);
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime7);
+    pthread_mutex_unlock(&mutex);
+    //sleep 2 second before starting ECHONET DEVICE CONTROL
+    sleep(2);
+    if(pthread_create(&threads[1], NULL,ECHONET_DEVICE_CONTROL,(void *)0))
+    {
+        printf("Error on thread creation for ECHONET_DEVICE_CONTROL\n");
+        exit(-1);
+    }
     while (1) 
         pause();
     return 0;
@@ -127,22 +166,17 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     uint8_t ControlSignal,prev_ControlSignal,index;
     
     //MySQL Variable
-    uint8_t state_window1,state_window2,state_curtain,state_aircond,setting_aircond_temperature,aircond_room_humidity;
+    uint8_t state_window1=0,state_window2=0,state_curtain=0,state_aircond=0,setting_aircond_temperature=0,aircond_room_humidity=0;
     
-    int8_t aircond_room_temperature,aircond_cooled_air_temperature,aircond_outdoor_air_temperature;
+    int8_t aircond_room_temperature=0,aircond_cooled_air_temperature=0,aircond_outdoor_air_temperature=0;
     
-    uint8_t UDP_network_timeout_aircond,UDP_network_timeout_airspeed_indoor,UDP_network_timeout_airspeed_outdoor,UDP_network_timeout_temperature_indoor,UDP_network_timeout_temperature_outdoor,UDP_network_timeout_window1,UDP_network_timeout_window2,UDP_network_timeout_curtain;
+    float UDP_network_timeout_aircond=0,UDP_network_timeout_airspeed_indoor=0,UDP_network_timeout_airspeed_outdoor=0,UDP_network_timeout_temperature_indoor=0,UDP_network_timeout_temperature_outdoor=0,UDP_network_timeout_window1=0,UDP_network_timeout_window2=0,UDP_network_timeout_curtain=0;
     
-    uint8_t UDP_network_fatal_aircond,UDP_network_fatal_airspeed_indoor,UDP_network_fatal_airspeed_outdoor,UDP_network_fatal_temperature_indoor,UDP_network_fatal_temperature_outdoor,UDP_network_fatal_window1,UDP_network_fatal_window2,UDP_network_fatal_curtain;
+    uint8_t UDP_network_fatal_aircond=0,UDP_network_fatal_airspeed_indoor=0,UDP_network_fatal_airspeed_outdoor=0,UDP_network_fatal_temperature_indoor=0,UDP_network_fatal_temperature_outdoor=0,UDP_network_fatal_window1=0,UDP_network_fatal_window2=0,UDP_network_fatal_curtain=0;
     
-    float aircond_current_comsumption;
+    float aircond_current_comsumption=0.0;
     char scriptOutput[10];
-    
-    if(run_counter==0)
-    {
-        aircond_room_temperature=aircond_cooled_air_temperature=aircond_outdoor_air_temperature=setting_aircond_temperature=aircond_room_humidity=0;
-        UDP_network_fatal_aircond=UDP_network_fatal_airspeed_indoor=UDP_network_fatal_airspeed_outdoor=UDP_network_fatal_temperature_indoor=UDP_network_fatal_temperature_outdoor=UDP_network_fatal_window1=UDP_network_fatal_window2=UDP_network_fatal_curtain=UDP_network_timeout_aircond=UDP_network_timeout_airspeed_indoor=UDP_network_timeout_airspeed_outdoor=UDP_network_timeout_temperature_indoor=UDP_network_timeout_temperature_outdoor=UDP_network_timeout_window1=UDP_network_timeout_window2=UDP_network_timeout_curtain=0;
-    }
+    uint8_t TID_counter_local;
     
     printf("Start of EETCC routine. No.%d\n",run_counter);
     
@@ -157,6 +191,20 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     sensor_HumidityIndoor=MTsensor_HumidityIndoor;
     sensor_HumidityOutdoor=MTsensor_HumidityOutdoor;
     sensor_TemperatureOutdoor=MTsensor_TemperatureOutdoor;
+    state_aircond=MTstate_aircond;
+    state_curtain=MTstate_curtain;
+    state_window1=MTstate_window1;
+    state_window2=MTstate_window2;
+    TID_counter_local=TID_counter;
+    UDP_network_timeout_aircond=MTUDP_network_timeout_aircond;
+    UDP_network_timeout_airspeed_indoor=MTUDP_network_timeout_airspeed_indoor;
+    UDP_network_timeout_airspeed_outdoor=MTUDP_network_timeout_airspeed_outdoor;
+    UDP_network_timeout_temperature_indoor=MTUDP_network_timeout_temperature_indoor;
+    UDP_network_timeout_temperature_outdoor=MTUDP_network_timeout_temperature_outdoor;
+    UDP_network_timeout_window1=MTUDP_network_timeout_window1;
+    UDP_network_timeout_window2=MTUDP_network_timeout_window2;
+    UDP_network_timeout_curtain=MTUDP_network_timeout_curtain;
+    MTUDP_network_timeout_aircond=MTUDP_network_timeout_airspeed_indoor=MTUDP_network_timeout_airspeed_outdoor=MTUDP_network_timeout_temperature_indoor=MTUDP_network_timeout_temperature_outdoor=MTUDP_network_timeout_window1=MTUDP_network_timeout_window2=MTUDP_network_timeout_curtain=0;
     pthread_mutex_unlock(&mutex);
     
     //get Solar reading from Makino script
@@ -172,19 +220,47 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
         sensor_SolarVoltage=sensor_SolarVoltage*-1;
     sensor_SolarRadiation=(137598*pow(sensor_SolarVoltage,2))+(3216.1*sensor_SolarVoltage)+0.6377;
     //3 Indoor Airspeed sensor (IP:192.168.2.202) TID: 10
-    echonetMT_getiHouse_2_202(10);
+    echonetMT_getiHouse_2_202(((TID_counter_local<<8) | 10));
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime1);
+    pthread_mutex_unlock(&mutex);
     //1 Outdoor Airspeed sensor,1 Outdoor Temperature sensor,1 Outdoor Humidity sensor (IP:192.168.2.145) TID: 20
-    echonetMT_getiHouse_2_145(20);
+    echonetMT_getiHouse_2_145(((TID_counter_local<<8) | 20));
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime2);
+    pthread_mutex_unlock(&mutex);
     //1 Indoor Temperature sensor,1 Indoor Humidity sensor (IP:192.168.2.108) TID: 30
-    echonetMT_getiHouse_2_108(30);
+    echonetMT_getiHouse_2_108(((TID_counter_local<<8) | 30));
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime3);
+    pthread_mutex_unlock(&mutex);
     //Air Conditioner (IP:192.168.2.174) TID: 40
-    echonetMT_getiHouse_2_174(40);
+    echonetMT_getiHouse_2_174(((TID_counter_local<<8) | 40));
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime4);
+    pthread_mutex_unlock(&mutex);
     //2 Switch, Window1 (IP:192.168.2.166) TID: 50
-    echonetMT_getiHouse_2_166(50);
+    echonetMT_getiHouse_2_166(((TID_counter_local<<8) | 50));
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime5);
+    pthread_mutex_unlock(&mutex);
     //2 Switch, Window2 (IP:192.168.2.167) TID: 60
-    echonetMT_getiHouse_2_167(60);
+    echonetMT_getiHouse_2_167(((TID_counter_local<<8) | 60));
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime6);
+    pthread_mutex_unlock(&mutex);
     //2 Switch, Curtain (IP:192.168.2.158) TID: 70
-    echonetMT_getiHouse_2_158(70);
+    echonetMT_getiHouse_2_158(((TID_counter_local<<8) | 70));
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    time(&previousTime7);
+    pthread_mutex_unlock(&mutex);
     
     EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, 0.0, sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV1
     PMV1=EETCC_PMV();
@@ -217,7 +293,7 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     PPD=EETCC_PPD();
     draught=EETCC_draught(sensor_TemperatureIndoor, sensor_AirSpeedIndoor);
     
-    sprintf(sql,"INSERT INTO iHouseData_test VALUES(%d,%d,%d,%d,%d,%d,%f,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%f,%d,%f,%f,%f,%f,%f,NOW())",(sql_ID+run_counter-1),state_window1,state_window2,state_curtain,state_aircond,setting_aircond_temperature,aircond_current_comsumption,aircond_room_humidity,aircond_room_temperature,aircond_cooled_air_temperature,aircond_outdoor_air_temperature,sensor_TemperatureIndoor,sensor_TemperatureOutdoor,sensor_AirSpeedIndoor,sensor_AirSpeedOutdoor,sensor_HumidityIndoor,sensor_HumidityOutdoor,sensor_SolarVoltage,sensor_SolarRadiation,UDP_network_timeout_aircond,UDP_network_timeout_airspeed_indoor,UDP_network_timeout_airspeed_outdoor,UDP_network_timeout_temperature_indoor,UDP_network_timeout_temperature_outdoor,UDP_network_timeout_window1,UDP_network_timeout_window2,UDP_network_timeout_curtain,UDP_network_fatal_aircond,UDP_network_fatal_airspeed_indoor,UDP_network_fatal_airspeed_outdoor,UDP_network_fatal_temperature_indoor,UDP_network_fatal_temperature_outdoor,UDP_network_fatal_window1,UDP_network_fatal_window2,UDP_network_fatal_curtain,PMV,PMV1,PMV2,PMV3,PMV4,PPD,PPD1,PPD2,PPD3,PPD4,ControlSignal,prev_ControlSignal,timer,index,globalA,globalA_delay,Q1,Q2,draught);
+    sprintf(sql,"INSERT INTO iHouseData_test VALUES(%d,%d,%d,%d,%d,%d,%f,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%f,%d,%f,%f,%f,%f,%f,NOW())",(sql_ID+run_counter-1),state_window1,state_window2,state_curtain,state_aircond,setting_aircond_temperature,aircond_current_comsumption,aircond_room_humidity,aircond_room_temperature,aircond_cooled_air_temperature,aircond_outdoor_air_temperature,sensor_TemperatureIndoor,sensor_TemperatureOutdoor,sensor_AirSpeedIndoor,sensor_AirSpeedOutdoor,sensor_HumidityIndoor,sensor_HumidityOutdoor,sensor_SolarVoltage,sensor_SolarRadiation,UDP_network_timeout_aircond,UDP_network_timeout_airspeed_indoor,UDP_network_timeout_airspeed_outdoor,UDP_network_timeout_temperature_indoor,UDP_network_timeout_temperature_outdoor,UDP_network_timeout_window1,UDP_network_timeout_window2,UDP_network_timeout_curtain,UDP_network_fatal_aircond,UDP_network_fatal_airspeed_indoor,UDP_network_fatal_airspeed_outdoor,UDP_network_fatal_temperature_indoor,UDP_network_fatal_temperature_outdoor,UDP_network_fatal_window1,UDP_network_fatal_window2,UDP_network_fatal_curtain,PMV,PMV1,PMV2,PMV3,PMV4,PPD,PPD1,PPD2,PPD3,PPD4,ControlSignal,prev_ControlSignal,timer,index,globalA,globalA_delay,Q1,Q2,draught);
     if(mysql_query(con, sql))
     {
         exit_sql_error(con);
@@ -226,7 +302,51 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     
     
     printf("End of EETCC routine. No.%d\n\n",run_counter);
+    
     run_counter++;
+    if(TID_counter_local<255)
+        TID_counter_local++;
+    else
+        TID_counter_local=0;
+    //Multi-thread global variable lock to prevent read/write error
+    pthread_mutex_lock(&mutex);
+    EETCC_ControlSignal=ControlSignal;
+    TID_counter=TID_counter_local;
+    pthread_mutex_unlock(&mutex);
+}
+
+void *ECHONET_DEVICE_CONTROL(void *threadid)
+{
+    uint8_t prev_EETCC_controlsignal=0,EETCC_controlsignal,unexpected_state_changed;
+    uint8_t state_Aircond,state_Window1,state_Window2,state_Curtain;
+    time_t currentTime_all,previousTime_aircond,previousTime_window1,previousTime_window2,previousTime_curtain;
+    long tid;
+    tid = (long)threadid;
+    while(1)
+    {
+        //Multi-thread global variable lock to prevent read/write error
+        pthread_mutex_lock(&mutex);
+        EETCC_controlsignal=EETCC_ControlSignal;
+        state_Aircond=MTstate_aircond;
+        state_Window1=MTstate_window1;
+        state_Window2=MTstate_window2;
+        state_Curtain=MTstate_curtain;
+        pthread_mutex_unlock(&mutex);
+        time(&currentTime_all);
+        if(EETCC_controlsignal!=prev_EETCC_controlsignal || unexpected_state_changed==1)
+        {
+            
+            
+            prev_EETCC_controlsignal=EETCC_controlsignal;
+        }
+        else
+        {
+            difftime(currentTime_all,previousTime_aircond);
+        }
+        //sleep 500ms
+        nanosleep((const struct timespec[]){{0, 500000000L}}, NULL);
+    }
+    //pthread_exit(NULL);
 }
 
 void System_INT_Handler(int sig)
@@ -252,6 +372,8 @@ void close_sql(MYSQL *con)
 
 void *SERVER_PORT_LISTEN(void *threadid)
 {
+    uint16_t UDPpacket_TIDraw;
+    uint8_t UDPpacket_TID_upper8bit;
     long tid;
     tid = (long)threadid;
     while(1)
@@ -263,7 +385,9 @@ void *SERVER_PORT_LISTEN(void *threadid)
             //check if it's Echonet Lite Packet
             if((unsigned)UDPnetwork_buffer[0]==EHD1_ECHONET && (unsigned)UDPnetwork_buffer[1]==EHD2_FORMAT1)
             {
-                UDPpacket_TID=((unsigned char)UDPnetwork_buffer[2]<<8 | (unsigned char)UDPnetwork_buffer[3]);
+                UDPpacket_TIDraw=((unsigned char)UDPnetwork_buffer[2]<<8 | (unsigned char)UDPnetwork_buffer[3]);
+                UDPpacket_TID=UDPpacket_TIDraw&0x00FF;
+                UDPpacket_TID_upper8bit=(char)(UDPpacket_TIDraw>>8);
                 switch ((unsigned)UDPnetwork_buffer[4])
                 {
                     case CGC_SENSOR_RELATED:
@@ -326,10 +450,28 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                     {
                                         case 21:
                                             MTsensor_TemperatureOutdoor=((float)(UDPnetwork_buffer[14]<<8 | UDPnetwork_buffer[15]))/10;
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            {
+                                                time(&currentTime2);
+                                                MTUDP_network_timeout_temperature_outdoor=(float)difftime(currentTime2,previousTime2);
+                                            }
+                                            else
+                                            {
+                                                MTUDP_network_timeout_temperature_outdoor=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            }
                                             break;
                                             
                                         case 30:
                                             MTsensor_TemperatureIndoor=((float)(UDPnetwork_buffer[14]<<8 | UDPnetwork_buffer[15]))/10;
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            {
+                                                time(&currentTime3);
+                                                MTUDP_network_timeout_temperature_indoor=(float)difftime(currentTime3,previousTime3);
+                                            }
+                                            else
+                                            {
+                                                MTUDP_network_timeout_temperature_indoor=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            }
                                             break;
                                             
                                         default:
@@ -351,10 +493,28 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                     {
                                         case 22:
                                             MTsensor_HumidityOutdoor=((float)UDPnetwork_buffer[14])/100;
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            {
+                                                time(&currentTime2);
+                                                MTUDP_network_timeout_temperature_outdoor=(float)difftime(currentTime2,previousTime2);
+                                            }
+                                            else
+                                            {
+                                                MTUDP_network_timeout_temperature_outdoor=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            }
                                             break;
                                             
                                         case 31:
                                             MTsensor_HumidityIndoor=((float)UDPnetwork_buffer[14])/100;
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            {
+                                                time(&currentTime3);
+                                                MTUDP_network_timeout_temperature_indoor=(float)difftime(currentTime3,previousTime3);
+                                            }
+                                            else
+                                            {
+                                                MTUDP_network_timeout_temperature_indoor=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            }
                                             break;
                                             
                                         default:
@@ -412,18 +572,54 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                     {
                                         case 10:
                                             MTsensor_AirSpeed1=((float)(UDPnetwork_buffer[14]<<8 | UDPnetwork_buffer[15]))/100;
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            {
+                                                time(&currentTime1);
+                                                MTUDP_network_timeout_airspeed_indoor=(float)difftime(currentTime1,previousTime1);
+                                            }
+                                            else
+                                            {
+                                                MTUDP_network_timeout_airspeed_indoor=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            }
                                             break;
                                             
                                         case 11:
                                             MTsensor_AirSpeed2=((float)(UDPnetwork_buffer[14]<<8 | UDPnetwork_buffer[15]))/100;
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            {
+                                                time(&currentTime1);
+                                                MTUDP_network_timeout_airspeed_indoor=(float)difftime(currentTime1,previousTime1);
+                                            }
+                                            else
+                                            {
+                                                MTUDP_network_timeout_airspeed_indoor=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            }
                                             break;
                                             
                                         case 12:
                                             MTsensor_AirSpeed3=((float)(UDPnetwork_buffer[14]<<8 | UDPnetwork_buffer[15]))/100;
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            {
+                                                time(&currentTime1);
+                                                MTUDP_network_timeout_airspeed_indoor=(float)difftime(currentTime1,previousTime1);
+                                            }
+                                            else
+                                            {
+                                                MTUDP_network_timeout_airspeed_indoor=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            }
                                             break;
                                             
                                         case 20:
                                             MTsensor_AirSpeedOutdoor=((float)(UDPnetwork_buffer[14]<<8 | UDPnetwork_buffer[15]))/100;
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            {
+                                                time(&currentTime2);
+                                                MTUDP_network_timeout_airspeed_outdoor=(float)difftime(currentTime2,previousTime2);
+                                            }
+                                            else
+                                            {
+                                                MTUDP_network_timeout_airspeed_outdoor=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            }
                                             break;
                                             
                                         default:
@@ -488,9 +684,26 @@ void *SERVER_PORT_LISTEN(void *threadid)
                     {
                         case CC_HOME_AIR_CONDITIONER:
                             //setting_aircond_temperature,aircond_room_humidity
-                            if((unsigned)UDPnetwork_buffer[10]==ESV_Set_Res && (unsigned)UDPnetwork_buffer[11]==0x01)
+                            if((unsigned)UDPnetwork_buffer[10]==ESV_Get_Res && (unsigned)UDPnetwork_buffer[11]==0x01)
                             {
-                                //for device check routine!
+                                if((unsigned)UDPnetwork_buffer[12]==EPC_OPERATIONAL_STATUS && (unsigned)UDPnetwork_buffer[13]==1)
+                                {
+                                    MTstate_aircond=UDPnetwork_buffer[14];
+                                    if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                    {
+                                        time(&currentTime4);
+                                        MTUDP_network_timeout_aircond=(float)difftime(currentTime4,previousTime4);
+                                    }
+                                    else
+                                    {
+                                        MTUDP_network_timeout_aircond=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                    }
+                                }
+                                
+                            }
+                            else if((unsigned)UDPnetwork_buffer[10]==ESV_Set_Res && (unsigned)UDPnetwork_buffer[11]==0x01)
+                            {
+                                
                             }
                             break;
                         case CC_COLD_BLASTER:
@@ -900,18 +1113,54 @@ void *SERVER_PORT_LISTEN(void *threadid)
                                     {
                                         case 40:
                                             MTstate_aircond=UDPnetwork_buffer[14];
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            {
+                                                time(&currentTime4);
+                                                MTUDP_network_timeout_aircond=(float)difftime(currentTime4,previousTime4);
+                                            }
+                                            else
+                                            {
+                                                MTUDP_network_timeout_aircond=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            }
                                             break;
                                             
                                         case 50:
                                             MTstate_window1=UDPnetwork_buffer[14];
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            {
+                                                time(&currentTime5);
+                                                MTUDP_network_timeout_window1=(float)difftime(currentTime5,previousTime5);
+                                            }
+                                            else
+                                            {
+                                                MTUDP_network_timeout_window1=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            }
                                             break;
                                             
                                         case 60:
                                             MTstate_window2=UDPnetwork_buffer[14];
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            {
+                                                time(&currentTime6);
+                                                MTUDP_network_timeout_window2=(float)difftime(currentTime6,previousTime6);
+                                            }
+                                            else
+                                            {
+                                                MTUDP_network_timeout_window2=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            }
                                             break;
                                             
                                         case 70:
                                             MTstate_curtain=UDPnetwork_buffer[14];
+                                            if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1))
+                                            {
+                                                time(&currentTime7);
+                                                MTUDP_network_timeout_curtain=(float)difftime(currentTime7,previousTime7);
+                                            }
+                                            else
+                                            {
+                                                MTUDP_network_timeout_curtain=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            }
                                             break;
                                             
                                         default:
