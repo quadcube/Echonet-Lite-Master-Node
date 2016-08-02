@@ -11,7 +11,7 @@
 double PMV,PPD;
 float firstTimeValue,prev_firstTimeValue;
 uint8_t globalAdelay_flag,prev_controlSignal_flag;
-uint8_t prev_controlSignal,controlSignal;
+uint8_t prev_controlSignal=5,controlSignal;
 time_t currentTime,previousTime;
 double secondTime;
 
@@ -128,15 +128,24 @@ double EETCC_PPD(void)
  */
 uint8_t EETCC_prev_controlSignal(void)
 {
+    //uint8_t memory[2]={5,5};
+    //memory[0]=memory[1];
+    //memory[1]=controlSignal;
+    
     if(prev_controlSignal_flag==1)
     {
-        prev_controlSignal=controlSignal;
+        //prev_controlSignal=controlSignal;
         prev_controlSignal_flag=0;
-        return prev_controlSignal;
+        //return prev_controlSignal;
     }
     if(prev_controlSignal!=controlSignal)
+    {
+        prev_controlSignal=controlSignal;
         prev_controlSignal_flag=1;
-    return prev_controlSignal;
+    }
+    //return prev_controlSignal;
+    //return memory[0];
+    return controlSignal;
 }
 
 /*

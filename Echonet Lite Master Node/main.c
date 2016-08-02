@@ -30,6 +30,8 @@
 
 #define TIME_INTERVAL_MS            10000  //10 seconds per EETCC calculation
 #define TIME_INTERVAL_RETRANSMIT    10  //in seconds
+#define TIME_INTERVAL_WINDOW        30  //TIME_INTERVAL_RETRANSMIT + TIME_INTERVAL_WINDOW
+#define TIME_INTERVAL_CURTAIN       5   //TIME_INTERVAL_RETRANSMIT + TIME_INTERVAL_CURTAIN
 #define DESIRED_TEMPERATURE         25.07
 
 void ECHONETMT_LITE_MAIN_ROUTINE(void);
@@ -45,6 +47,7 @@ uint8_t TID_counter=0;
 char sql[1000];
 MYSQL *con;
 
+
 //Multi-thread global variable
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 time_t currentTime1,previousTime1,currentTime2,previousTime2,currentTime3,previousTime3,currentTime4,previousTime4,currentTime5,previousTime5,currentTime6,previousTime6,currentTime7,previousTime7;
@@ -55,8 +58,16 @@ uint8_t MTupdatedstate_window1=0,MTupdatedstate_window2=0,MTupdatedstate_curtain
 uint8_t EETCC_ControlSignal=5;
 char UDPnetwork_buffer[DEFAULT_BUFFER_SIZE];
 uint16_t UDPpacket_TID;
+unsigned long accumulative_power=0;
 unsigned long UDPpacket_length;
 
+/*
+ Main program
+ Note: 1) Connect to localhost MySQL database
+       2) Use alarm signal to run EETCC calculation thread every 10 second
+       3) UDP listener thread and packet analyzer
+       4) Echonet device control thread with retry timer
+ */
 int main(void)
 {
     //Init. setup
@@ -144,6 +155,7 @@ int main(void)
     pthread_mutex_lock(&mutex);
     time(&previousTime7);
     pthread_mutex_unlock(&mutex);
+    echonetMT_getObject_powerDistributionMeter_reading("192.168.2.176",256,1,3);
     //sleep 2 second before starting ECHONET DEVICE CONTROL
     sleep(2);
     if(pthread_create(&threads[1], NULL,ECHONET_DEVICE_CONTROL,(void *)0))
@@ -157,7 +169,10 @@ int main(void)
 }
 
 /*
- Multi-thread version
+ Multi-thread version EETCC calculation
+ Note: 1) send Get request to Echonet devices
+       2) retrieve value from global variable and calculate EETCC control state
+       3) update SQL database
  */
 void ECHONETMT_LITE_MAIN_ROUTINE(void)
 {
@@ -177,13 +192,15 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     uint8_t UDP_network_fatal_aircond=0,UDP_network_fatal_airspeed_indoor=0,UDP_network_fatal_airspeed_outdoor=0,UDP_network_fatal_temperature_indoor=0,UDP_network_fatal_temperature_outdoor=0,UDP_network_fatal_window1=0,UDP_network_fatal_window2=0,UDP_network_fatal_curtain=0;
     
     float aircond_current_comsumption=0.0;
+    unsigned long Accumulative_power;
     char scriptOutput[10];
     uint8_t TID_counter_local;
     
-    printf("Start of EETCC routine. No.%d\n",run_counter);
+    printf("EETCC routine. No.%d\n",run_counter);
     
     //Multi-thread global variable lock to prevent read/write error
     pthread_mutex_lock(&mutex);
+    Accumulative_power=accumulative_power;
     sensor_AirSpeedIndoor=(MTsensor_AirSpeed1+MTsensor_AirSpeed2+MTsensor_AirSpeed3)/3;
     sensor_AirSpeedOutdoor=MTsensor_AirSpeedOutdoor;
     sensor_AirSpeed1=MTsensor_AirSpeed1;
@@ -221,6 +238,7 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     if(scriptOutput[0]=='-')
         sensor_SolarVoltage=sensor_SolarVoltage*-1;
     sensor_SolarRadiation=(137598*pow(sensor_SolarVoltage,2))+(3216.1*sensor_SolarVoltage)+0.6377;
+    echonetMT_getObject_powerDistributionMeter_reading("192.168.2.176",0x256,1,3);
     //3 Indoor Airspeed sensor (IP:192.168.2.202) TID: 10
     echonetMT_getiHouse_2_202(((TID_counter_local<<8) | 10));
     //Multi-thread global variable lock to prevent read/write error
@@ -270,10 +288,10 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, 0.0, sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV2
     PMV2=EETCC_PMV();
     PPD2=EETCC_PPD();
-    EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, (sensor_AirSpeedOutdoor*0.8*0.5/0.1), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV3
+    EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, (sensor_AirSpeedOutdoor*0.8*0.5), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV3
     PMV3=EETCC_PMV();
     PPD3=EETCC_PPD();
-    EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, (sensor_AirSpeedOutdoor*1.0*0.5/0.1), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV4
+    EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, (sensor_AirSpeedOutdoor*1.0*0.5), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV4
     PMV4=EETCC_PMV();
     PPD4=EETCC_PPD();
     Q1=EETCC_Q1(1, sensor_TemperatureIndoor, sensor_TemperatureOutdoor, 3, sensor_SolarRadiation, sensor_SolarRadiation);
@@ -283,7 +301,7 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     timer=EETCC_timer();
     globalA=EETCC_globalA(PMV);
     globalA_delay=EETCC_globalA_delay();
-    ControlSignal=EETCC_controlSignal(PMV1,PMV2,PMV3,PMV4,prev_ControlSignal,timer,index,sensor_AirSpeedOutdoor,sensor_TemperatureIndoor,globalA,globalA_delay);
+    ControlSignal=EETCC_controlSignal(PMV1,PMV2,PMV3,PMV4,prev_ControlSignal,timer,index,(sensor_AirSpeedOutdoor*0.1),sensor_TemperatureIndoor,globalA,globalA_delay);
     if(ControlSignal==3)
         PMV_gain=0.8;
     else if(ControlSignal==4)
@@ -295,7 +313,8 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     PPD=EETCC_PPD();
     draught=EETCC_draught(sensor_TemperatureIndoor, sensor_AirSpeedIndoor);
     
-    sprintf(sql,"INSERT INTO iHouseData_test2 VALUES(%d,%d,%d,%d,%d,%d,%f,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%f,%d,%f,%f,%f,%f,%f,NOW())",(sql_ID+run_counter-1),state_window1,state_window2,state_curtain,state_aircond,setting_aircond_temperature,aircond_current_comsumption,aircond_room_humidity,aircond_room_temperature,aircond_cooled_air_temperature,aircond_outdoor_air_temperature,sensor_TemperatureIndoor,sensor_TemperatureOutdoor,sensor_AirSpeedIndoor,sensor_AirSpeedOutdoor,sensor_HumidityIndoor,sensor_HumidityOutdoor,sensor_SolarVoltage,sensor_SolarRadiation,UDP_network_timeout_aircond,UDP_network_timeout_airspeed_indoor,UDP_network_timeout_airspeed_outdoor,UDP_network_timeout_temperature_indoor,UDP_network_timeout_temperature_outdoor,UDP_network_timeout_window1,UDP_network_timeout_window2,UDP_network_timeout_curtain,UDP_network_fatal_aircond,UDP_network_fatal_airspeed_indoor,UDP_network_fatal_airspeed_outdoor,UDP_network_fatal_temperature_indoor,UDP_network_fatal_temperature_outdoor,UDP_network_fatal_window1,UDP_network_fatal_window2,UDP_network_fatal_curtain,PMV,PMV1,PMV2,PMV3,PMV4,PPD,PPD1,PPD2,PPD3,PPD4,ControlSignal,prev_ControlSignal,timer,index,globalA,globalA_delay,Q1,Q2,draught);
+    sprintf(sql,"INSERT INTO iHouseData_testrun2 VALUES(%d,%d,%d,%d,%d,%d,%f,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%f,%d,%f,%f,%f,%f,%f,%lu,NOW())",(sql_ID+run_counter-1),state_window1,state_window2,state_curtain,state_aircond,setting_aircond_temperature,aircond_current_comsumption,aircond_room_humidity,aircond_room_temperature,aircond_cooled_air_temperature,aircond_outdoor_air_temperature,sensor_TemperatureIndoor,sensor_TemperatureOutdoor,sensor_AirSpeedIndoor,sensor_AirSpeedOutdoor,sensor_HumidityIndoor,sensor_HumidityOutdoor,sensor_SolarVoltage,sensor_SolarRadiation,UDP_network_timeout_aircond,UDP_network_timeout_airspeed_indoor,UDP_network_timeout_airspeed_outdoor,UDP_network_timeout_temperature_indoor,UDP_network_timeout_temperature_outdoor,UDP_network_timeout_window1,UDP_network_timeout_window2,UDP_network_timeout_curtain,UDP_network_fatal_aircond,UDP_network_fatal_airspeed_indoor,UDP_network_fatal_airspeed_outdoor,UDP_network_fatal_temperature_indoor,UDP_network_fatal_temperature_outdoor,UDP_network_fatal_window1,UDP_network_fatal_window2,UDP_network_fatal_curtain,PMV,PMV1,PMV2,PMV3,PMV4,PPD,PPD1,PPD2,PPD3,PPD4,ControlSignal,prev_ControlSignal,timer,index,globalA,globalA_delay,Q1,Q2,draught,Accumulative_power);
+    
     if(mysql_query(con, sql))
     {
         exit_sql_error(con);
@@ -303,7 +322,7 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     memset(sql,'\0',1000);   //clear SQL command array*/
     
     
-    printf("End of EETCC routine. No.%d\n\n",run_counter);
+    //printf("End of EETCC routine. No.%d\n\n",run_counter);
     
     run_counter++;
     if(TID_counter_local<245)   //reserve 10 TID_counter for ECHONET_DEVICE_CONTROL
@@ -317,18 +336,23 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     pthread_mutex_unlock(&mutex);
 }
 
+/*
+ Echonet Device Control thread
+ Note: 1) Listen for EETCC change in control signal
+       2) Keep all Echonet devices in the EETCC state
+ */
 void *ECHONET_DEVICE_CONTROL(void *threadid)
 {
     uint8_t prev_EETCC_controlsignal=0,EETCC_controlsignal,unexpected_state_changed=0;
     uint8_t state_Aircond,state_Window1,state_Window2,state_Curtain;
     uint8_t updatedstate_Aircond=1,updatedstate_Window1=1,updatedstate_Window2=1,updatedstate_Curtain=1;
     time_t currentTime_all,previousTime_aircond,previousTime_window1,previousTime_window2,previousTime_curtain;
-    time_t specialTimer;
+    //time_t specialTimer;
     uint16_t echonet_TID=246;
     uint8_t first_run=1,retransmit_flag=0;
     long tid;
     tid = (long)threadid;
-    time(&specialTimer);
+    //time(&specialTimer);
     time(&previousTime_aircond);
     time(&previousTime_window1);
     time(&previousTime_window2);
@@ -377,11 +401,11 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
             {
                 printf("\n##########################################\n\nControl Signal changed! State: %d\n\n##########################################\n",(EETCC_controlsignal-1));
             }
-            if((difftime(currentTime_all, specialTimer)>180) || first_run==1)
-            {
-                time(&specialTimer);
+            //if((difftime(currentTime_all, specialTimer)>180) || first_run==1)
+            //{
+            //    time(&specialTimer);
                 prev_EETCC_controlsignal=EETCC_controlsignal;
-            }
+            //}
             unexpected_state_changed=0;
             retransmit_flag=0;
             switch (prev_EETCC_controlsignal)
@@ -396,7 +420,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Aircond=0;
-                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
                         updatedstate_Window1=1;
@@ -405,7 +429,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Window1=0;
-                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
                         updatedstate_Window2=1;
@@ -414,7 +438,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Window2=0;
-                    if(state_Curtain==0x30 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Curtain==0x30 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
                         updatedstate_Curtain=1;
@@ -435,7 +459,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Aircond=0;
-                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
                         updatedstate_Window1=1;
@@ -444,7 +468,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Window1=0;
-                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
                         updatedstate_Window2=1;
@@ -453,7 +477,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Window2=0;
-                    if(state_Curtain==0x31 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Curtain==0x31 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
                         updatedstate_Curtain=1;
@@ -474,7 +498,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Aircond=0;
-                    if(state_Window1==0x31 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Window1==0x31 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
                         updatedstate_Window1=1;
@@ -483,7 +507,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Window1=0;
-                    if(state_Window2==0x31 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Window2==0x31 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
                         updatedstate_Window2=1;
@@ -492,7 +516,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Window2=0;
-                    if(state_Curtain==0x30 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Curtain==0x30 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
                         updatedstate_Curtain=1;
@@ -513,7 +537,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Aircond=0;
-                    if(state_Window1==0x31 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Window1==0x31 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
                         updatedstate_Window1=1;
@@ -522,7 +546,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Window1=0;
-                    if(state_Window2==0x31 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Window2==0x31 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
                         updatedstate_Window2=1;
@@ -531,7 +555,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Window2=0;
-                    if(state_Curtain==0x31 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Curtain==0x31 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
                         updatedstate_Curtain=1;
@@ -552,7 +576,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Aircond=0;
-                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
                         updatedstate_Window1=1;
@@ -561,7 +585,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Window1=0;
-                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
                         updatedstate_Window2=1;
@@ -570,7 +594,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Window2=0;
-                    if(state_Curtain==0x30 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Curtain==0x30 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
                         updatedstate_Curtain=1;
@@ -591,7 +615,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Aircond=0;
-                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
                         updatedstate_Window1=1;
@@ -600,7 +624,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Window1=0;
-                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
                         updatedstate_Window2=1;
@@ -609,7 +633,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     }
                     else
                         updatedstate_Window2=0;
-                    if(state_Curtain==0x31 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Curtain==0x31 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
                     {
                         echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
                         updatedstate_Curtain=1;
@@ -624,7 +648,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     break;
             }
         }
-        else if((updatedstate_Aircond==1 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT)) || (updatedstate_Window1==1 && (difftime(currentTime_all,previousTime_window1)>TIME_INTERVAL_RETRANSMIT)) || (updatedstate_Window2==1 && (difftime(currentTime_all,previousTime_window2)>TIME_INTERVAL_RETRANSMIT)) || (updatedstate_Curtain==1 && (difftime(currentTime_all,previousTime_curtain)>TIME_INTERVAL_RETRANSMIT)))
+        else if((updatedstate_Aircond==1 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT)) || (updatedstate_Window1==1 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW))) || (updatedstate_Window2==1 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW))) || (updatedstate_Curtain==1 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN))))
         {
             //routine for re-transmission to ensure device state is correct
             retransmit_flag=1;
@@ -673,6 +697,7 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
         echonetMT_getiHouse_2_166(echonet_TID);
         echonetMT_getiHouse_2_167(echonet_TID);
         echonetMT_getiHouse_2_158(echonet_TID);
+        echonetMT_getObject_powerDistributionMeter_reading("192.168.2.176",echonet_TID,1,3);
         sleep(1);
         //sleep 500ms
         //nanosleep((const struct timespec[]){{0, 1000000000L}}, NULL);
@@ -701,6 +726,11 @@ void close_sql(MYSQL *con)
     mysql_close(con);
 }
 
+/*
+ UDP listener thread
+ Note: 1) Listen for UDP packet from Echonet port
+       2) Analyze incoming packet and update the respective global variable
+ */
 void *SERVER_PORT_LISTEN(void *threadid)
 {
     uint16_t UDPpacket_TIDraw;
@@ -1301,7 +1331,7 @@ void *SERVER_PORT_LISTEN(void *threadid)
                             
                             break;
                         case CC_DISTRIBUTION_PANEL_METERING:
-                            
+                            accumulative_power=((unsigned char)UDPnetwork_buffer[14]<<24 | (unsigned char)UDPnetwork_buffer[15]<<16 | (unsigned char)UDPnetwork_buffer[16]<<8 | (unsigned char)UDPnetwork_buffer[17]);
                             break;
                         case CC_LOW_VOLTAGE_SMART_ELECTRIC_ENERGY_METER:
                             
