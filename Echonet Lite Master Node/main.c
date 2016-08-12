@@ -27,13 +27,14 @@
 #include "EETCC.h"
 //#include "EETCC_MATLAB.h"
 
-
+//EETCC and Echonet Lite Device Setting
 #define TIME_INTERVAL_MS            10000  //10 seconds per EETCC calculation
 #define TIME_INTERVAL_RETRANSMIT    10  //in seconds
 #define TIME_INTERVAL_WINDOW        30  //TIME_INTERVAL_RETRANSMIT + TIME_INTERVAL_WINDOW
 #define TIME_INTERVAL_CURTAIN       5   //TIME_INTERVAL_RETRANSMIT + TIME_INTERVAL_CURTAIN
 #define DESIRED_TEMPERATURE         25.07
 
+//Main Program Prototype Function
 void ECHONETMT_LITE_MAIN_ROUTINE(void);
 void ECHONET_LITE_MAIN_ROUTINE(void);
 void System_INT_Handler(int sig);
@@ -46,7 +47,6 @@ uint16_t run_counter=1,sql_ID;
 uint8_t TID_counter=0;
 char sql[1000];
 MYSQL *con;
-
 
 //Multi-thread global variable
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -74,7 +74,7 @@ int main(void)
     printf("##################################################\n\nEnergy Efficient Thermal Comfort Control (EETCC)\n\n##################################################\n");
     initMT_network();
     EETCC_init();
-    signal(SIGINT,System_INT_Handler);
+    signal(SIGINT,System_INT_Handler);  //setup signal to catch CTRL-C command to close MySQL connection and do proper shutdown
     printf("MySQL client version: %s\n", mysql_get_client_info());
     con = mysql_init(NULL);	//SQL initialization
     if (con == NULL)
@@ -98,10 +98,10 @@ int main(void)
         perror("Error catching SIGALRM for ECHONET_LITE_MAIN_ROUTINE\n");
         exit(1);
     }
-    it_val.it_value.tv_sec=TIME_INTERVAL_MS/1000;
-    it_val.it_value.tv_usec=(TIME_INTERVAL_MS*1000)%1000000;
-    it_val.it_interval = it_val.it_value;
-    if (setitimer(ITIMER_REAL, &it_val, NULL) == -1)
+    it_val.it_value.tv_sec=TIME_INTERVAL_MS/1000;               //timer setup for EETCC algorithm loop
+    it_val.it_value.tv_usec=(TIME_INTERVAL_MS*1000)%1000000;    //timer setup for EETCC algorithm loop
+    it_val.it_interval = it_val.it_value;                       //timer setup for EETCC algorithm loop
+    if (setitimer(ITIMER_REAL, &it_val, NULL) == -1)            //timer setup for EETCC algorithm loop
     {
         perror("Error initializing setitimer()\n");
         exit(1);
@@ -301,7 +301,7 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     timer=EETCC_timer();
     globalA=EETCC_globalA(PMV);
     globalA_delay=EETCC_globalA_delay();
-    ControlSignal=EETCC_controlSignal(PMV1,PMV2,PMV3,PMV4,prev_ControlSignal,timer,index,(sensor_AirSpeedOutdoor*0.1),sensor_TemperatureIndoor,globalA,globalA_delay);
+    ControlSignal=EETCC_controlSignal_v2(PMV1,PMV2,PMV3,PMV4,prev_ControlSignal,timer,index,(sensor_AirSpeedOutdoor*0.1),sensor_TemperatureIndoor,sensor_TemperatureOutdoor,sensor_SolarRadiation,globalA,globalA_delay);
     if(ControlSignal==3)
         PMV_gain=0.8;
     else if(ControlSignal==4)
@@ -411,36 +411,36 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
             switch (prev_EETCC_controlsignal)
             {
                 case 1:
-                    if(state_Aircond==0x30 && (difftime(currentTime_all,previousTime_aircond)> TIME_INTERVAL_RETRANSMIT|| first_run==1))
+                    if(state_Aircond==OS_ON && (difftime(currentTime_all,previousTime_aircond)> TIME_INTERVAL_RETRANSMIT|| first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0x31);
+                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, OS_OFF);
                         updatedstate_Aircond=1;
                         time(&previousTime_aircond);
                         printf("Disabling air conditional! State: 0\n");
                     }
                     else
                         updatedstate_Aircond=0;
-                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
+                    if(state_Window1==OS_ON && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, OS_ON);
                         updatedstate_Window1=1;
                         time(&previousTime_window1);
                         printf("Disabling window1! State: 0\n");
                     }
                     else
                         updatedstate_Window1=0;
-                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
+                    if(state_Window2==OS_ON && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, OS_ON);
                         updatedstate_Window2=1;
                         time(&previousTime_window2);
                         printf("Disabling window2! State: 0\n");
                     }
                     else
                         updatedstate_Window2=0;
-                    if(state_Curtain==0x30 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
+                    if(state_Curtain==OS_ON && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, OS_ON);
                         updatedstate_Curtain=1;
                         time(&previousTime_curtain);
                         printf("Disabling curtain! State: 0\n");
@@ -450,36 +450,36 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     break;
                     
                 case 2:
-                    if(state_Aircond==0x30 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Aircond==OS_ON && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0x31);
+                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, OS_OFF);
                         updatedstate_Aircond=1;
                         time(&previousTime_aircond);
                         printf("Disabling air conditional! State: 1\n");
                     }
                     else
                         updatedstate_Aircond=0;
-                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
+                    if(state_Window1==OS_ON && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, OS_ON);
                         updatedstate_Window1=1;
                         time(&previousTime_window1);
                         printf("Disabling window1! State: 1\n");
                     }
                     else
                         updatedstate_Window1=0;
-                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
+                    if(state_Window2==OS_ON && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, OS_ON);
                         updatedstate_Window2=1;
                         time(&previousTime_window2);
                         printf("Disabling window2! State: 1\n");
                     }
                     else
                         updatedstate_Window2=0;
-                    if(state_Curtain==0x31 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
+                    if(state_Curtain==OS_OFF && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, OS_ON);
                         updatedstate_Curtain=1;
                         time(&previousTime_curtain);
                         printf("Enabling curtain! State: 1\n");
@@ -489,36 +489,36 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     break;
                     
                 case 3:
-                    if(state_Aircond==0x30 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Aircond==OS_ON && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0x31);
+                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, OS_OFF);
                         updatedstate_Aircond=1;
                         time(&previousTime_aircond);
                         printf("Disabling air conditional! State: 2\n");
                     }
                     else
                         updatedstate_Aircond=0;
-                    if(state_Window1==0x31 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
+                    if(state_Window1==OS_OFF && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, OS_ON);
                         updatedstate_Window1=1;
                         time(&previousTime_window1);
                         printf("Enabling window1! State: 2\n");
                     }
                     else
                         updatedstate_Window1=0;
-                    if(state_Window2==0x31 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
+                    if(state_Window2==OS_OFF && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, OS_ON);
                         updatedstate_Window2=1;
                         time(&previousTime_window2);
                         printf("Enabling window2! State: 2\n");
                     }
                     else
                         updatedstate_Window2=0;
-                    if(state_Curtain==0x30 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
+                    if(state_Curtain==OS_ON && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, OS_ON);
                         updatedstate_Curtain=1;
                         time(&previousTime_curtain);
                         printf("Disabling curtain! State: 2\n");
@@ -528,36 +528,36 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     break;
                     
                 case 4:
-                    if(state_Aircond==0x30 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Aircond==OS_ON && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0x31);
+                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, OS_OFF);
                         updatedstate_Aircond=1;
                         time(&previousTime_aircond);
                         printf("Disabling air conditional! State: 3\n");
                     }
                     else
                         updatedstate_Aircond=0;
-                    if(state_Window1==0x31 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
+                    if(state_Window1==OS_OFF && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, OS_ON);
                         updatedstate_Window1=1;
                         time(&previousTime_window1);
                         printf("Enabling window1! State: 3\n");
                     }
                     else
                         updatedstate_Window1=0;
-                    if(state_Window2==0x31 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
+                    if(state_Window2==OS_OFF && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, OS_ON);
                         updatedstate_Window2=1;
                         time(&previousTime_window2);
                         printf("Enabling window2! State: 3\n");
                     }
                     else
                         updatedstate_Window2=0;
-                    if(state_Curtain==0x31 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
+                    if(state_Curtain==OS_OFF && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, OS_ON);
                         updatedstate_Curtain=1;
                         time(&previousTime_curtain);
                         printf("Enabling curtain! State: 3\n");
@@ -567,36 +567,36 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     break;
                     
                 case 5:
-                    if(state_Aircond==0x31 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Aircond==OS_OFF && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, OS_ON);
                         updatedstate_Aircond=1;
                         time(&previousTime_aircond);
                         printf("Enabling air conditional! State: 4\n");
                     }
                     else
                         updatedstate_Aircond=0;
-                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
+                    if(state_Window1==OS_ON && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, OS_ON);
                         updatedstate_Window1=1;
                         time(&previousTime_window1);
                         printf("Disabling window1! State: 4\n");
                     }
                     else
                         updatedstate_Window1=0;
-                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
+                    if(state_Window2==OS_ON && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, OS_ON);
                         updatedstate_Window2=1;
                         time(&previousTime_window2);
                         printf("Disabling window2! State: 4\n");
                     }
                     else
                         updatedstate_Window2=0;
-                    if(state_Curtain==0x30 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
+                    if(state_Curtain==OS_ON && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, OS_ON);
                         updatedstate_Curtain=1;
                         time(&previousTime_curtain);
                         printf("Disabling curtain! State: 4\n");
@@ -606,36 +606,36 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
                     break;
                     
                 case 6:
-                    if(state_Aircond==0x31 && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
+                    if(state_Aircond==OS_OFF && (difftime(currentTime_all,previousTime_aircond)>TIME_INTERVAL_RETRANSMIT || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.174", echonet_TID, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, OS_ON);
                         updatedstate_Aircond=1;
                         time(&previousTime_aircond);
                         printf("Enabling air conditional! State: 5\n");
                     }
                     else
                         updatedstate_Aircond=0;
-                    if(state_Window1==0x30 && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
+                    if(state_Window1==OS_ON && (difftime(currentTime_all,previousTime_window1)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.166", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, OS_ON);
                         updatedstate_Window1=1;
                         time(&previousTime_window1);
                         printf("Disabling window1! State: 5\n");
                     }
                     else
                         updatedstate_Window1=0;
-                    if(state_Window2==0x30 && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
+                    if(state_Window2==OS_ON && (difftime(currentTime_all,previousTime_window2)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_WINDOW) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.167", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 2, OS_ON);
                         updatedstate_Window2=1;
                         time(&previousTime_window2);
                         printf("Disabling window2! State: 5\n");
                     }
                     else
                         updatedstate_Window2=0;
-                    if(state_Curtain==0x31 && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
+                    if(state_Curtain==OS_OFF && (difftime(currentTime_all,previousTime_curtain)>(TIME_INTERVAL_RETRANSMIT+TIME_INTERVAL_CURTAIN) || first_run==1))
                     {
-                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, 0x30);
+                        echonetMT_setObject_operationalStatus("192.168.2.158", echonet_TID, CGC_MANAGEMENT_RELATED, CC_SWITCH, 1, OS_ON);
                         updatedstate_Curtain=1;
                         time(&previousTime_curtain);
                         printf("Enabling curtain! State: 5\n");
@@ -659,32 +659,32 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
             switch (prev_EETCC_controlsignal)
             {
                 case 1:
-                    if((state_Aircond==0x30 && updatedstate_Aircond==0) || (state_Window1==0x30 && updatedstate_Window1==0) || (state_Window2==0x30 && updatedstate_Window2==0) || (state_Curtain==0x30 && updatedstate_Curtain==0))
+                    if((state_Aircond==OS_ON && updatedstate_Aircond==0) || (state_Window1==OS_ON && updatedstate_Window1==0) || (state_Window2==OS_ON && updatedstate_Window2==0) || (state_Curtain==OS_ON && updatedstate_Curtain==0))
                         unexpected_state_changed++;
                     break;
                     
                 case 2:
-                    if((state_Aircond==0x30 && updatedstate_Aircond==0) || (state_Window1==0x30 &&updatedstate_Window1==0) || (state_Window2==0x30 && updatedstate_Window2==0) || (state_Curtain==0x31 && updatedstate_Curtain==0))
+                    if((state_Aircond==OS_ON && updatedstate_Aircond==0) || (state_Window1==OS_ON &&updatedstate_Window1==0) || (state_Window2==OS_ON && updatedstate_Window2==0) || (state_Curtain==OS_OFF && updatedstate_Curtain==0))
                         unexpected_state_changed++;
                     break;
                     
                 case 3:
-                    if((state_Aircond==0x30 && updatedstate_Aircond==0) || (state_Window1==0x31 && updatedstate_Window1==0) || (state_Window2==0x31 && updatedstate_Window2==0) || (state_Curtain==0x30 && updatedstate_Curtain==0))
+                    if((state_Aircond==OS_ON && updatedstate_Aircond==0) || (state_Window1==OS_OFF && updatedstate_Window1==0) || (state_Window2==OS_OFF && updatedstate_Window2==0) || (state_Curtain==OS_ON && updatedstate_Curtain==0))
                         unexpected_state_changed++;
                     break;
                     
                 case 4:
-                    if((state_Aircond==0x30 && updatedstate_Aircond==0) || (state_Window1==0x31 && updatedstate_Window1==0) || (state_Window2==0x31 && updatedstate_Window2==0) || (state_Curtain==0x31 && updatedstate_Curtain==0))
+                    if((state_Aircond==OS_ON && updatedstate_Aircond==0) || (state_Window1==OS_OFF && updatedstate_Window1==0) || (state_Window2==OS_OFF && updatedstate_Window2==0) || (state_Curtain==OS_OFF && updatedstate_Curtain==0))
                         unexpected_state_changed++;
                     break;
                     
                 case 5:
-                    if((state_Aircond==0x31 && updatedstate_Aircond==0) || (state_Window1==0x30 && updatedstate_Window1==0) || (state_Window2==0x30 && updatedstate_Window2==0) || (state_Curtain==0x30 && updatedstate_Curtain==0))
+                    if((state_Aircond==OS_OFF && updatedstate_Aircond==0) || (state_Window1==OS_ON && updatedstate_Window1==0) || (state_Window2==OS_ON && updatedstate_Window2==0) || (state_Curtain==OS_ON && updatedstate_Curtain==0))
                         unexpected_state_changed++;
                     break;
                     
                 case 6:
-                    if((state_Aircond==0x31 && updatedstate_Aircond==0) || (state_Window1==0x30 && updatedstate_Window1==0) || (state_Window2==0x30 && updatedstate_Window2==0) || (state_Curtain==0x31 && updatedstate_Curtain==0))
+                    if((state_Aircond==OS_OFF && updatedstate_Aircond==0) || (state_Window1==OS_ON && updatedstate_Window1==0) || (state_Window2==OS_ON && updatedstate_Window2==0) || (state_Curtain==OS_OFF && updatedstate_Curtain==0))
                         unexpected_state_changed++;
                     break;
                     
@@ -1668,7 +1668,7 @@ void *SERVER_PORT_LISTEN(void *threadid)
 /*
  Single thread version
  */
-void ECHONET_LITE_MAIN_ROUTINE(void)
+/*void ECHONET_LITE_MAIN_ROUTINE(void)
 {
     //EETCC Variable
     float sensor_AirSpeedIndoor,sensor_AirSpeedOutdoor,sensor_AirSpeed1,sensor_AirSpeed2,sensor_AirSpeed3,sensor_TemperatureIndoor,sensor_HumidityIndoor,sensor_HumidityOutdoor,sensor_TemperatureOutdoor,sensor_SolarRadiation,sensor_SolarVoltage,timer,globalA,globalA_delay,Q1,Q2;
@@ -1730,7 +1730,7 @@ void ECHONET_LITE_MAIN_ROUTINE(void)
     timer=EETCC_timer();
     globalA=EETCC_globalA(PMV);
     globalA_delay=EETCC_globalA_delay();
-    ControlSignal=EETCC_controlSignal(PMV1,PMV2,PMV3,PMV4,prev_ControlSignal,timer,index,sensor_AirSpeedOutdoor,sensor_TemperatureIndoor,globalA,globalA_delay);
+    ControlSignal=EETCC_controlSignal_v1(PMV1,PMV2,PMV3,PMV4,prev_ControlSignal,timer,index,sensor_AirSpeedOutdoor,sensor_TemperatureIndoor,globalA,globalA_delay);
     if(ControlSignal==3)
         PMV_gain=0.8;
     else if(ControlSignal==4)
@@ -1749,9 +1749,9 @@ void ECHONET_LITE_MAIN_ROUTINE(void)
     {
         exit_sql_error(con);
     }
-    memset(sql,'\0',1000);   //clear SQL command array*/
+    memset(sql,'\0',1000);   //clear SQL command array
     
     
     printf("End of EETCC routine. No.%d\n\n",run_counter);
     run_counter++;
-}
+}*/

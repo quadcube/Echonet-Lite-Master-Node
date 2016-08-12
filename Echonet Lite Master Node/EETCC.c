@@ -17,7 +17,7 @@ double secondTime;
 
 /*
  EETCC Initialization
- Note: 1) Initialize Global A value
+ Note: 1) Initialize Global A value, globalAdelay_flag,prev & first_time_value,previous_time
  */
 void EETCC_init(void)
 {
@@ -107,7 +107,7 @@ void EETCC_thermalComfort(float clothing_insulation,float metabolic_rate,float v
 
 /*
  EETCC PMV
- Note:
+ Note: 1) Return PMV value
  */
 double EETCC_PMV(void)
 {
@@ -116,7 +116,7 @@ double EETCC_PMV(void)
 
 /*
  EETCC PPD
- Note:
+ Note: 1) Return PPD value
  */
 double EETCC_PPD(void)
 {
@@ -125,6 +125,7 @@ double EETCC_PPD(void)
 
 /*
  EETCC Previous Control
+ Note: 1) Modified from the original previous_control due to the way the function is used in the main program
  */
 uint8_t EETCC_prev_controlSignal(void)
 {
@@ -150,7 +151,7 @@ uint8_t EETCC_prev_controlSignal(void)
 
 /*
  EETCC Draught
- Note:
+ Note: 1) Draught Rate calculation for EETCC_controlSignal
  */
 double EETCC_draught(float local_air_temperature,float local_mean_air_velocity)
 {
@@ -227,17 +228,17 @@ float EETCC_timer(void)
 
 
 /*
- EETCC Control Signal
- Note: 1) Dependency (EETCC_thermalComfort,EETCC_index,EETCC_GlobalA)
+ EETCC Control Signal (Original: v1)
+ Note: 1) Dependency (EETCC_thermalComfort,EETCC_index,EETCC_GlobalA,EETCC_GlobalA_delay)
        2) Algorithm is executed every 10 second (Total: 8640 data point for 24 Hours)
  */
-uint8_t EETCC_controlSignal(double PMV1,double PMV2,double PMV3,double PMV4,uint8_t prev_EETCC_controlSignal,float timer,uint8_t index,float local_mean_air_velocity,float temperature_mean_radiation,float GlobalA,float GlobalA_delay)
+uint8_t EETCC_controlSignal_v1(double PMV1,double PMV2,double PMV3,double PMV4,uint8_t prev_EETCC_controlSignal,float timer,uint8_t index,float local_mean_air_velocity,float temperature_mean_radiation,float GlobalA,float GlobalA_delay)
 {
     uint8_t i,j,iAll=1,iPart=1,iArray=1,counter_arrayAll=0,counter_newArray=0,control;
     uint8_t indicate[4],PMV_index[4];
     float timesh;
     double mAll,mArray;
-    double PMVoffset=0.5,DRThreshold=20.0,thresholdValue_PMV=0.00001;
+    double PMVoffset=PMV_OFFSET,DRThreshold=DRAUGHT_THRESHOLD,thresholdValue_PMV=PMV_THRESHOLD;
     double arrayAll[4]={0.0,0.0,0.0,0.0},All[4]={PMV1,PMV2,PMV3,PMV4},arrayPart[2]={fabs(PMV1),fabs(PMV2)},newArray[4],array[4];
     
     if(prev_EETCC_controlSignal==1 || prev_EETCC_controlSignal==2 || prev_EETCC_controlSignal==3 || prev_EETCC_controlSignal==4)
@@ -380,8 +381,190 @@ uint8_t EETCC_controlSignal(double PMV1,double PMV2,double PMV3,double PMV4,uint
 }
 
 /*
+ EETCC Control Signal (Modified: v2)
+ Note: 1) Dependency (EETCC_thermalComfort,EETCC_index,EETCC_GlobalA,EETCC_GlobalA_delay)
+ 2) Algorithm is executed every 10 second (Total: 8640 data point for 24 Hours)
+ */
+uint8_t EETCC_controlSignal_v2(double PMV1,double PMV2,double PMV3,double PMV4,uint8_t prev_EETCC_controlSignal,float timer,uint8_t index,float local_mean_air_velocity,float temperature_mean_radiation,float temperature_outdoor,float solar_radiation,float GlobalA,float GlobalA_delay)
+{
+    uint8_t i,j,iAll=1,iPart=1,iArray=1,counter_arrayAll=0,counter_newArray=0,control;
+    uint8_t indicate[4],PMV_index[4];
+    float timesh;
+    double mAll,mArray;
+    double PMVoffset=PMV_OFFSET,DRThreshold=DRAUGHT_THRESHOLD,thresholdValue_PMV=PMV_THRESHOLD;
+    double arrayAll[4]={0.0,0.0,0.0,0.0},All[4]={PMV1,PMV2,PMV3,PMV4},arrayPart[2]={fabs(PMV1),fabs(PMV2)},newArray[4],array[4];
+    
+    //modified EETCC    12/8/2016
+    if(prev_EETCC_controlSignal==1 || prev_EETCC_controlSignal==2 || prev_EETCC_controlSignal==3 || prev_EETCC_controlSignal==4)
+    {
+        if(temperature_outdoor>=temperature_mean_radiation)
+            timesh=(MINIMUM_TIME_WITHOUT_USING_AIRCOND_ToutHi*6);
+        else
+            timesh=(MINIMUM_TIME_WITHOUT_USING_AIRCOND_ToutLOW*6);
+    }
+    else
+    {
+        if(temperature_outdoor>=temperature_mean_radiation)
+            timesh=(MINIMUM_TIME_USING_AIRCOND_ToutHI*6);
+        else
+            timesh=(MINIMUM_TIME_USING_AIRCOND_ToutLOW*6);
+    }
+    //end of modified EETCC 12/8/2016
+    //Draught demands
+    if((EETCC_draught(temperature_mean_radiation,(0.8*local_mean_air_velocity)))>DRThreshold)
+        counter_arrayAll=2;
+    else if(((EETCC_draught(temperature_mean_radiation,(0.8*local_mean_air_velocity)))<=DRThreshold) && ((EETCC_draught(temperature_mean_radiation,local_mean_air_velocity))>DRThreshold))
+        counter_arrayAll=3;
+    else
+        counter_arrayAll=4;
+    arrayAll[0]=fabs(PMV1);
+    arrayAll[1]=fabs(PMV2);
+    if(counter_arrayAll==3 || counter_arrayAll==4)
+    {
+        arrayAll[2]=fabs(PMV3);
+        if(counter_arrayAll==4)
+            arrayAll[3]=fabs(PMV4);
+    }
+    mAll=arrayAll[0];
+    for(i=1;i<(counter_arrayAll);i++) //min(arrayAll_abs)
+        if(arrayAll[i]<mAll)
+        {
+            mAll=arrayAll[i];
+            iAll=(i+1); //keeping iAll in MATLAB format (iAll must be a non zero)
+        }
+    if(arrayPart[0]<=arrayPart[1])  //min(arrayPart_abs)
+        iPart=1;
+    else
+        iPart=2;
+    
+    if(GlobalA!=0)
+        control=5;   //return control: 5
+    else
+    {
+        if(timer>timesh)
+        {
+            if(mAll<PMVoffset)
+            {
+                if(prev_EETCC_controlSignal==1 || prev_EETCC_controlSignal==2 || prev_EETCC_controlSignal==3 || prev_EETCC_controlSignal==4)
+                {
+                    if((fabs(mAll-All[prev_EETCC_controlSignal-1]))<thresholdValue_PMV)
+                        control=prev_EETCC_controlSignal;    //return control: previous
+                    else
+                    {
+                        for(i=0;i<counter_arrayAll;i++) //indicate=arrayAll<PMVoffset
+                        {
+                            if(arrayAll[i]<PMVoffset)
+                            {
+                                indicate[i]=1;
+                                newArray[counter_newArray]=arrayAll[i]; //indicate=arrayAll_abs(indicate)
+                                counter_newArray++;
+                            }
+                            else
+                                indicate[i]=0;
+                        }
+                        mArray=array[0]=fabs(newArray[0]-All[prev_EETCC_controlSignal-1]);
+                        for(i=1;i<counter_newArray;i++) //[~,i]=min(array)
+                        {
+                            array[i]=fabs(newArray[i]-All[prev_EETCC_controlSignal-1]);
+                            if(array[i]<mArray)
+                            {
+                                mArray=array[i];
+                                iArray=i+1;
+                            }
+                        }
+                        j=0;
+                        for(i=0;i<counter_arrayAll;i++) //PMV_index=find(indicate==1)
+                        {
+                            if(indicate[i]==1)
+                            {
+                                PMV_index[j]=i+1;   //j cannot exceed counter_newArray
+                                j++;
+                            }
+                        }
+                        control=PMV_index[iArray-1];
+                        if(control==1 && index==2)
+                            control=2;
+                    }
+                }
+                else
+                {
+                    if(GlobalA_delay==0)
+                        control=iAll;
+                    else
+                    {
+                        for(i=0;i<counter_arrayAll;i++) //indicate=arrayAll<PMVoffset
+                        {
+                            if(arrayAll[i]<PMVoffset)
+                            {
+                                indicate[i]=1;
+                                newArray[counter_newArray]=arrayAll[i]; //indicate=arrayAll_abs(indicate)
+                                counter_newArray++;
+                            }
+                            else
+                                indicate[i]=0;
+                        }
+                        mArray=array[0]=fabs(newArray[0]-(0.8*PMVoffset));
+                        for(i=1;i<counter_newArray;i++) //[~,i]=min(array)
+                        {
+                            array[i]=fabs(newArray[i]-(0.8*PMVoffset));
+                            if(array[i]<mArray)
+                            {
+                                mArray=array[i];
+                                iArray=i+1;
+                            }
+                        }
+                        j=0;
+                        for(i=0;i<counter_arrayAll;i++) //PMV_index=find(indicate==1)
+                        {
+                            if(indicate[i]==1)
+                            {
+                                PMV_index[j]=i+1;   //j cannot exceed counter_newArray
+                                j++;
+                            }
+                        }
+                        control=PMV_index[iArray-1];
+                    }
+                    if(control==1 && index==2)
+                        control=2;
+                }
+            }
+            else
+            {
+                if(prev_EETCC_controlSignal==1 || prev_EETCC_controlSignal==2) //modification from original (control_old==1 && control_old==2),which is impossible for control_old to hold 2 state at the same time
+                    control=prev_EETCC_controlSignal+4;
+                else
+                    control=iPart+4;
+                if(control==5 && index==2)
+                    control=6;
+            }
+            //modified EETCC    12/8/2016
+            if(PMV1<=-0.5)
+            {
+                if(control==5)
+                    control=1;
+                else if(control==6)
+                    control=2;
+            }
+            if((control==3 || control==4) && (temperature_outdoor>=temperature_mean_radiation) && (solar_radiation>=1.0))
+                control=1;
+            if((control==5 || control==6) && (temperature_outdoor<=temperature_mean_radiation) && (solar_radiation<=1.0))
+                control=4;
+            if(control==6 && solar_radiation>=1.0)
+                control=5;
+            else if(control==5 && solar_radiation<=1.0)
+                control=6;
+            //end of modified EETCC 12/8/2016
+        }
+        else
+            control=prev_EETCC_controlSignal;
+    }
+    controlSignal=control;
+    return control;
+}
+
+/*
  EETCC Index Signal
- Note: 1) For EETCC_controlSignal
+ Note: 1) Compare Q1 and Q2, then passed to EETCC_controlSignal
  */
 uint8_t EETCC_index(float temperature_mean_radiation,float desired_temperature,float Q1,float Q2)
 {

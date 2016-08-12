@@ -15,11 +15,20 @@
 #include "network.h"
 #include "echonet_lite.h"
 
-#define MINIMUM_TIME_USING_AIRCOND              4   //minutes
-#define MINIMUM_TIME_WITHOUT_USING_AIRCOND      3   //minutes
+#define PMV_OFFSET                                  0.5
+#define PMV_THRESHOLD                               0.00001
+#define DRAUGHT_THRESHOLD                           20.0
 
-#define CLOTHING_INSULATION                     0.9
-#define METABOLIC_RATE                          1.0
+#define MINIMUM_TIME_USING_AIRCOND                  4   //minutes   (for Original: v1)
+#define MINIMUM_TIME_WITHOUT_USING_AIRCOND          3   //minutes   (for Original: v1)
+
+#define MINIMUM_TIME_USING_AIRCOND_ToutHI           50  //minutes   (for Modified: v2)
+#define MINIMUM_TIME_WITHOUT_USING_AIRCOND_ToutHi   30  //minutes   (for Modified: v2)
+#define MINIMUM_TIME_USING_AIRCOND_ToutLOW          10  //minutes   (for Modified: v2)
+#define MINIMUM_TIME_WITHOUT_USING_AIRCOND_ToutLOW  40  //minutes   (for Modified: v2)
+
+#define CLOTHING_INSULATION                         0.9
+#define METABOLIC_RATE                              1.0
 
 
 void EETCC_init(void);
@@ -34,7 +43,8 @@ float EETCC_globalA_delay(void);
 float EETCC_Q1(float occupant,float local_air_temperature,float outdoor_air_temperature,float correction,float solar_south,float solar_west);
 float EETCC_Q2(float occupant,float local_air_temperature,float outdoor_air_temperature,float correction,float solar_south,float solar_west);
 float EETCC_timer(void);
-uint8_t EETCC_controlSignal(double PMV1,double PMV2,double PMV3,double PMV4,uint8_t prev_EETCC_controlSignal,float timer,uint8_t index,float local_mean_air_velocity,float temperature_mean_radiation,float GlobalA,float GlobalA_delay);
+uint8_t EETCC_controlSignal_v1(double PMV1,double PMV2,double PMV3,double PMV4,uint8_t prev_EETCC_controlSignal,float timer,uint8_t index,float local_mean_air_velocity,float temperature_mean_radiation,float GlobalA,float GlobalA_delay);
+uint8_t EETCC_controlSignal_v2(double PMV1,double PMV2,double PMV3,double PMV4,uint8_t prev_EETCC_controlSignal,float timer,uint8_t index,float local_mean_air_velocity,float temperature_mean_radiation,float temperature_outdoor,float solar_radiation,float GlobalA,float GlobalA_delay);
 uint8_t EETCC_index(float temperature_mean_radiation,float desired_temperature,float Q1,float Q2);
 
 #endif /* EETCC_h */
