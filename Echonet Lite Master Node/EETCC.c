@@ -383,7 +383,7 @@ uint8_t EETCC_controlSignal_v1(double PMV1,double PMV2,double PMV3,double PMV4,u
 /*
  EETCC Control Signal (Modified: v2)
  Note: 1) Dependency (EETCC_thermalComfort,EETCC_index,EETCC_GlobalA,EETCC_GlobalA_delay)
- 2) Algorithm is executed every 10 second (Total: 8640 data point for 24 Hours)
+       2) Algorithm is executed every 10 second (Total: 8640 data point for 24 Hours)
  */
 uint8_t EETCC_controlSignal_v2(double PMV1,double PMV2,double PMV3,double PMV4,uint8_t prev_EETCC_controlSignal,float timer,uint8_t index,float local_mean_air_velocity,float temperature_mean_radiation,float temperature_outdoor,float solar_radiation,float GlobalA,float GlobalA_delay)
 {

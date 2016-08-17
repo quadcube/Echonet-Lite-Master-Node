@@ -20,6 +20,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <mysql.h>
+#include <math.h>
 #include <my_global.h>
 #include "network.h"
 #include "error.h"
@@ -56,6 +57,7 @@ float MTsensor_AirSpeedIndoor=0,MTsensor_AirSpeedOutdoor=0,MTsensor_AirSpeed1=0,
 uint8_t MTstate_window1=0,MTstate_window2=0,MTstate_curtain=0,MTstate_aircond=0,MTsetting_aircond_temperature=0,MTaircond_room_humidity=0;
 uint8_t MTupdatedstate_window1=0,MTupdatedstate_window2=0,MTupdatedstate_curtain=0,MTupdatedstate_aircond=0;
 uint8_t EETCC_ControlSignal=5;
+//uint8_t MTsensor_Rain=0;
 char UDPnetwork_buffer[DEFAULT_BUFFER_SIZE];
 uint16_t UDPpacket_TID;
 unsigned long accumulative_power=0;
@@ -195,6 +197,7 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     unsigned long Accumulative_power;
     char scriptOutput[10];
     uint8_t TID_counter_local;
+    //uint8_t sensor_Rain;
     
     printf("EETCC routine. No.%d\n",run_counter);
     
@@ -223,6 +226,7 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     UDP_network_timeout_window1=MTUDP_network_timeout_window1;
     UDP_network_timeout_window2=MTUDP_network_timeout_window2;
     UDP_network_timeout_curtain=MTUDP_network_timeout_curtain;
+    //sensor_Rain=MTsensor_Rain;
     MTUDP_network_timeout_aircond=MTUDP_network_timeout_airspeed_indoor=MTUDP_network_timeout_airspeed_outdoor=MTUDP_network_timeout_temperature_indoor=MTUDP_network_timeout_temperature_outdoor=MTUDP_network_timeout_window1=MTUDP_network_timeout_window2=MTUDP_network_timeout_curtain=0;
     pthread_mutex_unlock(&mutex);
     
@@ -302,6 +306,22 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     globalA=EETCC_globalA(PMV);
     globalA_delay=EETCC_globalA_delay();
     ControlSignal=EETCC_controlSignal_v2(PMV1,PMV2,PMV3,PMV4,prev_ControlSignal,timer,index,(sensor_AirSpeedOutdoor*0.1),sensor_TemperatureIndoor,sensor_TemperatureOutdoor,sensor_SolarRadiation,globalA,globalA_delay);
+    //if(sensor_Rain==0x41)
+    //{
+    //    printf("Rain condition! Calculated control: %d\n",ControlSignal);
+    //    switch (ControlSignal) {
+    //        case 3:
+    //            ControlSignal=0;
+    //            break;
+                
+    //        case 4:
+    //            ControlSignal=0;
+    //            break;
+                
+    //        default:
+    //            break;
+    //    }
+    //}
     if(ControlSignal==3)
         PMV_gain=0.8;
     else if(ControlSignal==4)
@@ -313,7 +333,7 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
     PPD=EETCC_PPD();
     draught=EETCC_draught(sensor_TemperatureIndoor, sensor_AirSpeedIndoor);
     
-    sprintf(sql,"INSERT INTO iHouseData_testrun2 VALUES(%d,%d,%d,%d,%d,%d,%f,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%f,%d,%f,%f,%f,%f,%f,%lu,NOW())",(sql_ID+run_counter-1),state_window1,state_window2,state_curtain,state_aircond,setting_aircond_temperature,aircond_current_comsumption,aircond_room_humidity,aircond_room_temperature,aircond_cooled_air_temperature,aircond_outdoor_air_temperature,sensor_TemperatureIndoor,sensor_TemperatureOutdoor,sensor_AirSpeedIndoor,sensor_AirSpeedOutdoor,sensor_HumidityIndoor,sensor_HumidityOutdoor,sensor_SolarVoltage,sensor_SolarRadiation,UDP_network_timeout_aircond,UDP_network_timeout_airspeed_indoor,UDP_network_timeout_airspeed_outdoor,UDP_network_timeout_temperature_indoor,UDP_network_timeout_temperature_outdoor,UDP_network_timeout_window1,UDP_network_timeout_window2,UDP_network_timeout_curtain,UDP_network_fatal_aircond,UDP_network_fatal_airspeed_indoor,UDP_network_fatal_airspeed_outdoor,UDP_network_fatal_temperature_indoor,UDP_network_fatal_temperature_outdoor,UDP_network_fatal_window1,UDP_network_fatal_window2,UDP_network_fatal_curtain,PMV,PMV1,PMV2,PMV3,PMV4,PPD,PPD1,PPD2,PPD3,PPD4,ControlSignal,prev_ControlSignal,timer,index,globalA,globalA_delay,Q1,Q2,draught,Accumulative_power);
+    sprintf(sql,"INSERT INTO iHouseData_testrun3 VALUES(%d,%d,%d,%d,%d,%d,%f,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%f,%d,%f,%f,%f,%f,%f,%lu,NOW())",(sql_ID+run_counter-1),state_window1,state_window2,state_curtain,state_aircond,setting_aircond_temperature,aircond_current_comsumption,aircond_room_humidity,aircond_room_temperature,aircond_cooled_air_temperature,aircond_outdoor_air_temperature,sensor_TemperatureIndoor,sensor_TemperatureOutdoor,sensor_AirSpeedIndoor,sensor_AirSpeedOutdoor,sensor_HumidityIndoor,sensor_HumidityOutdoor,sensor_SolarVoltage,sensor_SolarRadiation,UDP_network_timeout_aircond,UDP_network_timeout_airspeed_indoor,UDP_network_timeout_airspeed_outdoor,UDP_network_timeout_temperature_indoor,UDP_network_timeout_temperature_outdoor,UDP_network_timeout_window1,UDP_network_timeout_window2,UDP_network_timeout_curtain,UDP_network_fatal_aircond,UDP_network_fatal_airspeed_indoor,UDP_network_fatal_airspeed_outdoor,UDP_network_fatal_temperature_indoor,UDP_network_fatal_temperature_outdoor,UDP_network_fatal_window1,UDP_network_fatal_window2,UDP_network_fatal_curtain,PMV,PMV1,PMV2,PMV3,PMV4,PPD,PPD1,PPD2,PPD3,PPD4,ControlSignal,prev_ControlSignal,timer,index,globalA,globalA_delay,Q1,Q2,draught,Accumulative_power);
     
     if(mysql_query(con, sql))
     {
@@ -909,8 +929,36 @@ void *SERVER_PORT_LISTEN(void *threadid)
                             }
                             break;
                         case CC_RAIN_SENSOR:
-                            
-                            break;
+                            //if((unsigned)UDPnetwork_buffer[10]==ESV_Get_Res && (unsigned)UDPnetwork_buffer[11]==0x01)
+                            //{
+                                //if((unsigned)UDPnetwork_buffer[12]==0xB1 && (unsigned)UDPnetwork_buffer[13]==1)
+                                //{
+                                    //switch (UDPpacket_TID)
+                                    //{
+                                        //case 80:
+                                            //MTsensor_Rain=UDPnetwork_buffer[14];
+                                            //if(UDPpacket_TID_upper8bit==TID_counter || UDPpacket_TID_upper8bit==(TID_counter-1) || UDPpacket_TID_upper8bit==245)
+                                            //{
+                                            //    time(&currentTime2);
+                                            //    MTUDP_network_timeout_temperature_outdoor=(float)difftime(currentTime2,previousTime2);
+                                            //}
+                                            //else if(UDPpacket_TID_upper8bit>245 && UDPpacket_TID_upper8bit<=255)
+                                            //{
+                                                //no specific assignment for the moment 28/7/2016
+                                                //MTUDP_network_timeout_temperature_outdoor=0;
+                                            //}
+                                            //else
+                                            //{
+                                                //MTUDP_network_timeout_temperature_outdoor=-abs(UDPpacket_TID_upper8bit-TID_counter);
+                                            //}
+                                            //break;
+                                            
+                                        //default:
+                                            //break;
+                                    //}
+                                //}
+                            //}
+                            //break;
                         case CC_WATER_LEVEL_SENSOR:
                             
                             break;
