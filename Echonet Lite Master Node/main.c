@@ -66,6 +66,7 @@ unsigned long UDPpacket_length;
 char iOScommand[10]={0,0,0,0,0,0,0,0,0,0};
 unsigned long iOScommandlength;
 char iOS_status='0';
+char iOS_season='2';
 /*
  Main program
  Note: 1) Connect to localhost MySQL database
@@ -79,9 +80,80 @@ int main(void)
     printf("##################################################\n\nEnergy Efficient Thermal Comfort Control (EETCC)\n\n##################################################\n");
     initMT_network();
     EETCC_init();
-    while(iOScommand[0]==0 || iOScommand[0]=='0')
+    while(iOS_status=='0')
     {
-        udp_port_listener_echonet_lite(iOScommand,&iOScommandlength);
+        udp_port_listener_echonet_lite(iOScommand,&UDPpacket_length);
+        if(iOScommand[0]=='0' && UDPpacket_length==1)
+            iOS_status='0';
+        else if(iOScommand[0]=='1' && iOScommand[1]=='1' && UDPpacket_length==2)
+        {
+            //spring
+            iOS_season='1';
+            iOS_status='1';
+        }
+        else if(iOScommand[0]=='1' && iOScommand[1]=='2' && UDPpacket_length==2)
+        {
+            //summer
+            iOS_season='2';
+            iOS_status='1';
+        }
+        else if(iOScommand[0]=='1' && iOScommand[1]=='3' && UDPpacket_length==2)
+        {
+            //autumn
+            iOS_season='3';
+            iOS_status='1';
+        }
+        else if(iOScommand[0]=='1' && iOScommand[1]=='4' && UDPpacket_length==2)
+        {
+            //winter
+            iOS_season='4';
+            iOS_status='1';
+        }
+        else if(iOScommand[0]=='1' && UDPpacket_length==1)
+        {
+            iOS_status='1';
+            iOS_season='2';
+        }
+        else if(iOScommand[0]=='2' && UDPpacket_length==1)
+        {
+            UDPpacket_length=1;
+            return_incoming_ip(&iOS_status,&UDPpacket_length);
+        }
+        else if(iOScommand[0]=='3' && UDPpacket_length==1)
+        {
+            UDPpacket_length=1;
+            return_incoming_ip(&iOS_season,&UDPpacket_length);
+        }
+        else
+        {
+            printf("%s %lu\n",iOScommand,UDPpacket_length);
+        }
+    }
+    uint16_t echonet_TID1=246;
+    switch (iOS_season)
+    {
+        case '1':   //spring
+            echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x43);    //0x43: heat
+            echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x19);    //0x19: 25 degree C
+            break;
+           
+        case '2':   //summer
+            echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x42);    //0x43: cool
+            echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x16);    //0x19: 22 degree C
+            break;
+            
+        case '3':   //autumn
+            echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x43);    //0x43: heat
+            echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x19);    //0x19: 25 degree C
+            break;
+            
+        case '4':   //winter
+            echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x43);    //0x43: heat
+            echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x19);    //0x19: 25 degree C
+            break;
+            
+        default:
+            break;
     }
     iOS_status='1';
     signal(SIGINT,System_INT_Handler);  //setup signal to catch CTRL-C command to close MySQL connection and do proper shutdown
@@ -96,7 +168,7 @@ int main(void)
         exit_sql_error(con);
     else
         printf("Connected to MySQL database!\n");
-    sql_ID=mysql_insert_id(con);
+    //sql_ID=mysql_insert_id(con);
     //Thread Handler
     struct itimerval it_val;
     /*if (signal(SIGALRM, (void (*)(int))ECHONET_LITE_MAIN_ROUTINE) == SIG_ERR) {
@@ -295,6 +367,8 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
         time(&previousTime7);
         pthread_mutex_unlock(&mutex);
         
+        EETCC_season(iOS_season);    //update season to EETCC modified algorithm
+        
         EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, 0.0, sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV1
         PMV1=EETCC_PMV();
         PPD1=EETCC_PPD();
@@ -342,7 +416,7 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
         PPD=EETCC_PPD();
         draught=EETCC_draught(sensor_TemperatureIndoor, sensor_AirSpeedIndoor);
         
-        sprintf(sql,"INSERT INTO iHouseData_testrun5 VALUES(%d,%d,%d,%d,%d,%d,%f,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%f,%d,%f,%f,%f,%f,%f,%lu,NOW())",(sql_ID+run_counter-1),state_window1,state_window2,state_curtain,state_aircond,setting_aircond_temperature,aircond_current_comsumption,aircond_room_humidity,aircond_room_temperature,aircond_cooled_air_temperature,aircond_outdoor_air_temperature,sensor_TemperatureIndoor,sensor_TemperatureOutdoor,sensor_AirSpeedIndoor,sensor_AirSpeedOutdoor,sensor_HumidityIndoor,sensor_HumidityOutdoor,sensor_SolarVoltage,sensor_SolarRadiation,UDP_network_timeout_aircond,UDP_network_timeout_airspeed_indoor,UDP_network_timeout_airspeed_outdoor,UDP_network_timeout_temperature_indoor,UDP_network_timeout_temperature_outdoor,UDP_network_timeout_window1,UDP_network_timeout_window2,UDP_network_timeout_curtain,UDP_network_fatal_aircond,UDP_network_fatal_airspeed_indoor,UDP_network_fatal_airspeed_outdoor,UDP_network_fatal_temperature_indoor,UDP_network_fatal_temperature_outdoor,UDP_network_fatal_window1,UDP_network_fatal_window2,UDP_network_fatal_curtain,PMV,PMV1,PMV2,PMV3,PMV4,PPD,PPD1,PPD2,PPD3,PPD4,ControlSignal,prev_ControlSignal,timer,index,globalA,globalA_delay,Q1,Q2,draught,Accumulative_power);
+        sprintf(sql,"INSERT INTO iHouseData_testrun6 VALUES(%d,%d,%d,%d,%d,%d,%f,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%d,%f,%d,%f,%f,%f,%f,%f,%lu,NOW())",(sql_ID+run_counter-1),state_window1,state_window2,state_curtain,state_aircond,setting_aircond_temperature,aircond_current_comsumption,aircond_room_humidity,aircond_room_temperature,aircond_cooled_air_temperature,aircond_outdoor_air_temperature,sensor_TemperatureIndoor,sensor_TemperatureOutdoor,sensor_AirSpeedIndoor,sensor_AirSpeedOutdoor,sensor_HumidityIndoor,sensor_HumidityOutdoor,sensor_SolarVoltage,sensor_SolarRadiation,UDP_network_timeout_aircond,UDP_network_timeout_airspeed_indoor,UDP_network_timeout_airspeed_outdoor,UDP_network_timeout_temperature_indoor,UDP_network_timeout_temperature_outdoor,UDP_network_timeout_window1,UDP_network_timeout_window2,UDP_network_timeout_curtain,UDP_network_fatal_aircond,UDP_network_fatal_airspeed_indoor,UDP_network_fatal_airspeed_outdoor,UDP_network_fatal_temperature_indoor,UDP_network_fatal_temperature_outdoor,UDP_network_fatal_window1,UDP_network_fatal_window2,UDP_network_fatal_curtain,PMV,PMV1,PMV2,PMV3,PMV4,PPD,PPD1,PPD2,PPD3,PPD4,ControlSignal,prev_ControlSignal,timer,index,globalA,globalA_delay,Q1,Q2,draught,Accumulative_power);
         
         if(mysql_query(con, sql))
         {
@@ -737,27 +811,6 @@ void *ECHONET_DEVICE_CONTROL(void *threadid)
         sleep(1);
     }
     //pthread_exit(NULL);
-}
-
-void System_INT_Handler(int sig)
-{
-    char input;
-    signal(sig, SIG_IGN);
-    printf("Quit EETCC Main Routine? [y/n]");
-    input=getchar();
-    if(input=='y' || input=='Y')
-    {
-        close_sql(con);
-        exit(0);
-    }
-    else
-        signal(SIGINT,System_INT_Handler);
-    getchar();
-}
-
-void close_sql(MYSQL *con)
-{
-    mysql_close(con);
 }
 
 /*
@@ -1722,20 +1775,104 @@ void *SERVER_PORT_LISTEN(void *threadid)
             else
             {
                 printf("\n##########################################\n\nNon-Echonet packet received on port: %d\n\n##########################################\n",DEFAULT_ECHONET_PORT);
-                if(UDPnetwork_buffer[0]=='1')
+                if(UDPnetwork_buffer[0]=='1' && UDPnetwork_buffer[1]=='1' && UDPpacket_length==2)
+                {
+                    //spring
+                    iOS_season='1';
+                }
+                else if(UDPnetwork_buffer[0]=='1' && UDPnetwork_buffer[1]=='2' && UDPpacket_length==2)
+                {
+                    //summer
+                    iOS_season='2';
+                }
+                else if(UDPnetwork_buffer[0]=='1' && UDPnetwork_buffer[1]=='3' && UDPpacket_length==2)
+                {
+                    //autumn
+                    iOS_season='3';
+                }
+                else if(UDPnetwork_buffer[0]=='1' && UDPnetwork_buffer[1]=='4' && UDPpacket_length==2)
+                {
+                    //winter
+                    iOS_season='4';
+                }
+                else if(UDPnetwork_buffer[0]=='1' && UDPpacket_length==1)   //iOS/remote program command to turn on EETCC
                 {
                     iOS_status='1';
+                    iOS_season='2'; //summer
                 }
-                else if(UDPnetwork_buffer[0]=='0')
+                else if(UDPnetwork_buffer[0]=='0' && UDPpacket_length==1)  //iOS/remote program command to turn off EETCC
                 {
                     iOS_status='0';
                 }
+                else if(UDPnetwork_buffer[0]=='2' && UDPpacket_length==1)
+                {
+                    UDPpacket_length=1;
+                    return_incoming_ip(&iOS_status,&UDPpacket_length);
+                }
+                else if(UDPnetwork_buffer[0]=='3' && UDPpacket_length==1)
+                {
+                    UDPpacket_length=2;
+                    return_incoming_ip(&iOS_season,&UDPpacket_length);
+                }
+                else
+                {
+                    printf("Command not recognized!\n");
+                }
+                uint16_t echonet_TID1=246;
+                switch (iOS_season)
+                {
+                    case '1':   //spring
+                        echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x43);    //0x43: heat
+                        echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x19);    //0x19: 25 degree C
+                        break;
+                        
+                    case '2':   //summer
+                        echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x42);    //0x43: cool
+                        echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x16);    //0x19: 22 degree C
+                        break;
+                        
+                    case '3':   //autumn
+                        echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x43);    //0x43: heat
+                        echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x19);    //0x19: 25 degree C
+                        break;
+                        
+                    case '4':   //winter
+                        echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x43);    //0x43: heat
+                        echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x19);    //0x19: 25 degree C
+                        break;
+                        
+                    default:
+                        break;
+                }
+                
             }
             pthread_mutex_unlock(&mutex);
         }
     }
     //pthread_exit(NULL);
 }
+
+void System_INT_Handler(int sig)
+{
+    char input;
+    signal(sig, SIG_IGN);
+    printf("Quit EETCC Main Routine? [y/n]");
+    input=getchar();
+    if(input=='y' || input=='Y')
+    {
+        close_sql(con);
+        exit(0);
+    }
+    else
+        signal(SIGINT,System_INT_Handler);
+    getchar();
+}
+
+void close_sql(MYSQL *con)
+{
+    mysql_close(con);
+}
+
 
 /*
  Single thread version
