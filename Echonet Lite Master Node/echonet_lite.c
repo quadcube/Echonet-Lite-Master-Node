@@ -78,7 +78,7 @@ void echonet_setTID(uint16_t value)
  */
 uint16_t echonet_getTID(void)
 {
-    return ((unsigned char)echonet_packet[2]<<8 | (unsigned char)echonet_packet[3]);
+    return ((unsigned char)echonet_packet[2]<<8 | ((unsigned char)echonet_packet[3] & 0xFF));
 }
 
 /*
@@ -680,7 +680,7 @@ float echonet_getObject_sensorTemp_reading(char *ip_addr,uint16_t TID,unsigned c
     if(recv_udp(echonet_packet,&echonet_length,ip_addr)!=-1)
     {
         echonet_printPacket(echonet_length);
-        result=(float)(echonet_packet[14]<<8 | echonet_packet[15])/10;
+        result=(float)(echonet_packet[14]<<8 | (echonet_packet[15] & 0xFF))/10;
         return result;
     }
     else
@@ -726,7 +726,7 @@ uint16_t echonet_getObject_sensorIllum_reading(char *ip_addr,uint16_t TID,unsign
     if(recv_udp(echonet_packet,&echonet_length,ip_addr)!=-1)
     {
         echonet_printPacket(echonet_length);
-        result=(echonet_packet[14]<<8 | echonet_packet[15]);
+        result=(echonet_packet[14]<<8 | (echonet_packet[15] & 0xFF));
         if(result==0xFFFF)
         {
             echonet_setPacket(EHD1_ECHONET, EHD2_FORMAT1, TID, CGC_PROFILE_CLASS,CC_NODE_PROFILE,IC_GENERAL_NODE,CGC_SENSOR_RELATED, CC_ILLUMINANCE_SENSOR,instance_code, ESV_Get, 1);
@@ -735,7 +735,7 @@ uint16_t echonet_getObject_sensorIllum_reading(char *ip_addr,uint16_t TID,unsign
             echonet_savePacket();
             recv_udp(echonet_packet,&echonet_length,ip_addr);
             echonet_printPacket(echonet_length);
-            result=(echonet_packet[14]<<8 | echonet_packet[15]);
+            result=(echonet_packet[14]<<8 | (echonet_packet[15] & 0xFF));
             if(result==0xFFFF)
                 printf("Illuminance Sensor Kilo Lux Overflow!\n");
         }
@@ -760,7 +760,7 @@ float echonet_getObject_sensorAirSpeed_reading(char *ip_addr,uint16_t TID,unsign
     if(recv_udp(echonet_packet,&echonet_length,ip_addr)!=-1)
     {
         echonet_printPacket(echonet_length);
-        result=(echonet_packet[14]<<8 | echonet_packet[15]);
+        result=(echonet_packet[14]<<8 | (echonet_packet[15] & 0xFF));
         return ((float)result/100);
     }
     else
@@ -783,7 +783,7 @@ uint16_t echonet_getObject_sensorAirSpeed_direction(char *ip_addr,uint16_t TID,u
     if(recv_udp(echonet_packet,&echonet_length,ip_addr)!=-1)
     {
         echonet_printPacket(echonet_length);
-        result=(echonet_packet[14]<<8 | echonet_packet[15]);
+        result=(echonet_packet[14]<<8 | (echonet_packet[15] & 0xFF));
         return result;
     }
     else
@@ -807,7 +807,7 @@ float echonet_getObject_aircondCurrentConsumption(char *ip_addr,uint16_t TID,uns
     if(recv_udp(echonet_packet,&echonet_length,ip_addr)!=-1)
     {
         echonet_printPacket(echonet_length);
-        result=(echonet_packet[14]<<8 | echonet_packet[15]);
+        result=(echonet_packet[14]<<8 | (echonet_packet[15] & 0xFF));
         return ((float)result/10);
     }
     else
