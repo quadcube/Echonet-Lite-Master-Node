@@ -119,7 +119,7 @@ int main(void)
     printf("##################################################\n\nEnergy Efficient Thermal Comfort Control (EETCC)\n\n##################################################\n");
     initMT_network();
     EETCC_init();
-    //iOS_status='1';  //************************************* PLEASEEEEEEEEEE REMOVEEEEEEEEEEEEE!!!!! ******
+    //iOS_status='1';  //*****NOTE:uncomment when iOS application is not used PLEASEEEEEEEEEE REMOVEEEEEEEEEEEEE!!!!! ******
     while(iOS_status=='0')
     {
         udp_port_listener_echonet_lite(iOScommand,&UDPpacket_length);
