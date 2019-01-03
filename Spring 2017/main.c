@@ -92,12 +92,25 @@ int8_t tempaircond_outdoor_air_temperature;
 uint8_t tempstate_window1;
 uint8_t tempstate_window2;
 uint8_t tempstate_curtain;
+
 time_t rawtime;
 FILE*fp;
 char filename[]="eetcclog.csv";
 
 //
 //  end of modification 15 May 2017 ######################################################################
+//
+
+
+//
+// start of modification 3 Jan 2019 ####################################################################
+// Note: PMV, PPD metabolic rate and clothing insulation value is exposed as ECHONET Lite objects (requested by Hayashi-san for his digital twin project)
+#define ECHONETLITE_MET_CLO 0
+float tempsensor_MetabolicRate;
+float tempsensor_ClothingInsulation;
+
+//
+// end of modification 3 Jan 2019 ####################################################################
 //
 
 /*
@@ -228,22 +241,22 @@ int main(void)
     switch (iOS_season)
     {
         case '1':   //spring
-            echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x41);    //0x43: heat
+            echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x41);    //0x43: heat?
             echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x19);    //0x19: 25 degree C
             break;
            
         case '2':   //summer
-            //echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x42);    //0x43: cool
-            //echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x16);    //0x19: 22 degree C
+            //echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x42);    //0x42: cool
+            //echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x16);    //0x16: 22 degree C
             break;
             
         case '3':   //autumn
-            //echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x43);    //0x43: heat
+            //echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x43);    //0x43: heat?
             //echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x19);    //0x19: 25 degree C
             break;
             
         case '4':   //winter
-            //echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x43);    //0x43: heat
+            //echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB0, 0x43);    //0x43: heat?
             //echonetMT_setObject_param_1("192.168.2.174", echonet_TID1, CGC_AIR_CONDITIONER_RELATED, CC_HOME_AIR_CONDITIONER, 1, 0xB3, 0x19);    //0x19: 25 degree C
             break;
             
@@ -466,18 +479,36 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
         
         EETCC_season(iOS_season);    //update season to EETCC modified algorithm
         
-        EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, 0.0, sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV1
-        PMV1=EETCC_PMV();
-        PPD1=EETCC_PPD();
-        EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, 0.0, sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV2
-        PMV2=EETCC_PMV();
-        PPD2=EETCC_PPD();
-        EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, (sensor_AirSpeedOutdoor*0.8*0.5), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV3
-        PMV3=EETCC_PMV();
-        PPD3=EETCC_PPD();
-        EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, (sensor_AirSpeedOutdoor*1.0*0.5), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV4
-        PMV4=EETCC_PMV();
-        PPD4=EETCC_PPD();
+        if(ECHONETLITE_MET_CLO == 1)
+        {
+            EETCC_thermalComfort(tempsensor_ClothingInsulation, tempsensor_MetabolicRate, 0.0, sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV1
+            PMV1=EETCC_PMV();
+            PPD1=EETCC_PPD();
+            EETCC_thermalComfort(tempsensor_ClothingInsulation, tempsensor_MetabolicRate, 0.0, sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV2
+            PMV2=EETCC_PMV();
+            PPD2=EETCC_PPD();
+            EETCC_thermalComfort(tempsensor_ClothingInsulation, tempsensor_MetabolicRate, (sensor_AirSpeedOutdoor*0.8*0.5), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV3
+            PMV3=EETCC_PMV();
+            PPD3=EETCC_PPD();
+            EETCC_thermalComfort(tempsensor_ClothingInsulation, tempsensor_MetabolicRate, (sensor_AirSpeedOutdoor*1.0*0.5), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV4
+            PMV4=EETCC_PMV();
+            PPD4=EETCC_PPD();
+        }
+        else
+        {
+            EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, 0.0, sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV1
+            PMV1=EETCC_PMV();
+            PPD1=EETCC_PPD();
+            EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, 0.0, sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV2
+            PMV2=EETCC_PMV();
+            PPD2=EETCC_PPD();
+            EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, (sensor_AirSpeedOutdoor*0.8*0.5), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV3
+            PMV3=EETCC_PMV();
+            PPD3=EETCC_PPD();
+            EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, (sensor_AirSpeedOutdoor*1.0*0.5), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);   //PMV4
+            PMV4=EETCC_PMV();
+            PPD4=EETCC_PPD();
+        }
         Q1=EETCC_Q1(1, sensor_TemperatureIndoor, sensor_TemperatureOutdoor, 3, sensor_SolarRadiation, sensor_SolarRadiation);
         Q2=EETCC_Q2(1, sensor_TemperatureIndoor, sensor_TemperatureOutdoor, 3, sensor_SolarRadiation, sensor_SolarRadiation);
         index=EETCC_index(sensor_TemperatureIndoor, DESIRED_TEMPERATURE, Q1, Q2);
@@ -509,7 +540,14 @@ void ECHONETMT_LITE_MAIN_ROUTINE(void)
             PMV_gain=1;
         else
             PMV_gain=0;
-        EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, (sensor_AirSpeedOutdoor*PMV_gain*0.5), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);
+        if(ECHONETLITE_MET_CLO == 1)
+        {
+            EETCC_thermalComfort(tempsensor_ClothingInsulation, tempsensor_MetabolicRate, (sensor_AirSpeedOutdoor*PMV_gain*0.5), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);
+        }
+        else
+        {
+            EETCC_thermalComfort(CLOTHING_INSULATION, METABOLIC_RATE, (sensor_AirSpeedOutdoor*PMV_gain*0.5), sensor_TemperatureIndoor, sensor_HumidityIndoor, sensor_TemperatureIndoor);
+        }
         PMV=EETCC_PMV();
         PPD=EETCC_PPD();
         draught=EETCC_draught(sensor_TemperatureIndoor, sensor_AirSpeedIndoor);
