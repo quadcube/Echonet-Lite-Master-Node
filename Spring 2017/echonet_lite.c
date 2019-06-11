@@ -288,7 +288,7 @@ uint8_t echonet_getnPDC(char n)
  */
 void echonet_setnEDT(char n,char *property_data)
 {
-    int i,j=0,counter=0;;
+    int i,j=0,counter=0;
     if(n<=echonet_packet[11] && n!=0)
     {
         if(n==1)
@@ -317,7 +317,7 @@ void echonet_setnEDT(char n,char *property_data)
  */
 void echonet_getnEDT(char n,char *property_data)
 {
-    int i,j=0,counter=0;;
+    int i,j=0,counter=0;
     if(n<=echonet_packet[11] && n!=0)
     {
         if(n==1)
